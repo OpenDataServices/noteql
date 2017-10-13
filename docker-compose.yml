@@ -1,0 +1,25 @@
+version: '3.1'
+services:
+  python:
+    environment:
+      - "PGADMIN_SETUP_EMAIL=sqljson"
+      - "PGADMIN_SETUP_PASSWORD=sqljson"
+    build: .
+    command: python3 /usr/local/lib/python3.6/site-packages/pgadmin4/pgAdmin4.py
+    volumes:
+      - ./scripts:/usr/src/app/scripts
+      - ./data:/usr/src/app/data
+      - ./pgadmin:/usr/src/app/pgadmin
+    ports:
+      - "8000:8000"
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: sqljson
+      POSTGRES_PASSWORD: sqljson
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      - "54321:5432"
+
