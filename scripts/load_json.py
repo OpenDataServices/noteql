@@ -7,20 +7,6 @@ import click
 
 engine = sqlalchemy.create_engine('postgres://sqljson:sqljson@db/sqljson')
 
-#with open('data/canada-12-13.json') as f:
-#    for release in ijson.items(f, 'releases.item'):
-#        print(release)
-
-#connection = engine.connect()
-#connection.execute('create table if not exists moo(moo jsonb)')
-#connection.execute('truncate moo')
-#connection.execute("insert into moo values ('{}')")
-#result = connection.execute("select * from moo")
-
-#for i in result:
-    #print("moo")
-    #print(i)
-
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -28,11 +14,15 @@ class DecimalEncoder(json.JSONEncoder):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
 
+def put_quotes_round(table_name):
+    return '.'.join('"{}"'.format(part) for part in table_name.split('.'))
+
 def load_json(file_name, path_to_list='', table_name=None, field_name=None, append=False):
     if not table_name:
         table_name = os.path.split(file_name)[1].split('.')[0]
     if not field_name:
         field_name = path_to_list.split('.')[-1] or 'json'
+    table_name = put_quotes_round(table_name)
 
     connection = engine.connect()
     if not append:

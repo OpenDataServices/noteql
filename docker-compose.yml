@@ -19,7 +19,10 @@ services:
       POSTGRES_USER: sqljson
       POSTGRES_PASSWORD: sqljson
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - sqljson-postgresql:/var/lib/postgresql/data
     ports:
       - "54321:5432"
 
+volumes:
+  sqljson-postgresql:
+    external: true
