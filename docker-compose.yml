@@ -2,27 +2,41 @@ version: '3.1'
 services:
   python:
     environment:
-      - "PGADMIN_SETUP_EMAIL=sqljson"
-      - "PGADMIN_SETUP_PASSWORD=sqljson"
+      - "PGADMIN_SETUP_EMAIL=noteql"
+      - "PGADMIN_SETUP_PASSWORD=noteql"
     build: .
+    image: mypython
     command: python3 /usr/local/lib/python3.6/site-packages/pgadmin4/pgAdmin4.py
     volumes:
       - ./scripts:/usr/src/app/scripts
-      - ./data:/usr/src/app/data
+      - ./files:/usr/src/app/files
       - ./pgadmin:/usr/src/app/pgadmin
     ports:
       - "8000:8000"
+  jupiter:
+    environment:
+      - "PYTHONPATH=/usr/src/app/scripts"
+    image: mypython
+    command: 'jupyter notebook --no-browser --ip=0.0.0.0 --allow-root  --NotebookApp.token='
+    working_dir: /usr/src/app/files
+    ports:
+      - "8888:8888"
+    depends_on:
+      - "python"
+    volumes:
+      - ./scripts:/usr/src/app/scripts
+      - ./files:/usr/src/app/files
   db:
     image: postgres
     restart: always
     environment:
-      POSTGRES_USER: sqljson
-      POSTGRES_PASSWORD: sqljson
+      POSTGRES_USER: noteql
+      POSTGRES_PASSWORD: noteql
     volumes:
-      - sqljson-postgresql:/var/lib/postgresql/data
+      - noteql-postgresql:/var/lib/postgresql/data
     ports:
       - "54321:5432"
 
 volumes:
-  sqljson-postgresql:
+  noteql-postgresql:
     external: true

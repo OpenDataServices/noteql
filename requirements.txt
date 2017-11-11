@@ -2,3 +2,5 @@ sqlalchemy
 psycopg2
 ijson
 click
+jupyter
+jinja2
