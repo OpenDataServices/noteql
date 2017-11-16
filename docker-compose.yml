@@ -12,7 +12,7 @@ services:
       - ./files:/usr/src/app/files
       - ./pgadmin:/usr/src/app/pgadmin
     ports:
-      - "8000:8000"
+      - "12122:8000"
   jupiter:
     environment:
       - "PYTHONPATH=/usr/src/app/scripts"
@@ -20,7 +20,7 @@ services:
     command: 'jupyter notebook --no-browser --ip=0.0.0.0 --allow-root  --NotebookApp.token='
     working_dir: /usr/src/app/files
     ports:
-      - "8888:8888"
+      - "12121:8888"
     depends_on:
       - "python"
     volumes:
