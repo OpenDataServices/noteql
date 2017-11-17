@@ -4,3 +4,6 @@ ijson
 click
 jupyter
 jinja2
+lxml
+requests
+pandas
