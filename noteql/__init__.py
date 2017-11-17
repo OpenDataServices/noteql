@@ -63,7 +63,7 @@ class Session:
 
     def run_sql(self, sql, limit=20):
         with self.engine.begin() as connection:
-            connection.execute('set search_path = {};'.format(self.schema))
+            connection.execute('set local search_path = {};'.format(self.schema))
             result = connection.execute(sql)
             if result.returns_rows:
                 context = {
@@ -76,7 +76,7 @@ class Session:
 
     def get_dataframe(self, sql, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None):
         with self.engine.begin() as connection:
-            connection.execute('set search_path = {};'.format(self.schema))
+            connection.execute('set local search_path = {};'.format(self.schema))
             return pandas.read_sql_query(sql, connection, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None)
 
     def load_json(self, file_name, path_to_list='', table_name=None, field_name=None, append=False):

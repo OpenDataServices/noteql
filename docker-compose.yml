@@ -8,14 +8,14 @@ services:
     image: mypython
     command: python3 /usr/local/lib/python3.6/site-packages/pgadmin4/pgAdmin4.py
     volumes:
-      - ./scripts:/usr/src/app/scripts
+      - ./noteql:/usr/src/app/noteql
       - ./files:/usr/src/app/files
       - ./pgadmin:/usr/src/app/pgadmin
     ports:
       - "12122:8000"
   jupiter:
     environment:
-      - "PYTHONPATH=/usr/src/app/scripts"
+      - "PYTHONPATH=/usr/src/app/"
     image: mypython
     command: 'jupyter notebook --no-browser --ip=0.0.0.0 --allow-root  --NotebookApp.token='
     working_dir: /usr/src/app/files
@@ -24,7 +24,7 @@ services:
     depends_on:
       - "python"
     volumes:
-      - ./scripts:/usr/src/app/scripts
+      - ./noteql:/usr/src/app/noteql
       - ./files:/usr/src/app/files
   db:
     image: postgres
