@@ -8,6 +8,7 @@ import jinja2
 import functools
 import lxml.etree
 import html
+import pandas
 from IPython.core.display import display, HTML
 
 
@@ -72,6 +73,11 @@ class Session:
                 display(HTML(table.render(context)))
             else:
                 return "Success"
+
+    def get_dataframe(self, sql, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None):
+        with self.engine.begin() as connection:
+            connection.execute('set search_path = {};'.format(self.schema))
+            return pandas.read_sql_query(sql, connection, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None)
 
     def load_json(self, file_name, path_to_list='', table_name=None, field_name=None, append=False):
         load_json(file_name, path_to_list, self.schema + "." + table_name, field_name, append=False)
