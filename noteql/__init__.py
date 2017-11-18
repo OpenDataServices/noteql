@@ -1,7 +1,7 @@
 import sqlalchemy
 import ijson
 import os
-import simplejson as json
+import json
 import decimal
 import click
 import jinja2
@@ -55,6 +55,7 @@ def generate_rows(result, limit):
 class Session:
     def __init__(self, schema, dburi=None, drop=False):
         self.schema = schema
+        self.dburi = dburi
         self.engine = get_engine(dburi)
         with self.engine.begin() as connection:
             if drop:
@@ -80,10 +81,10 @@ class Session:
             return pandas.read_sql_query(sql, connection, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None)
 
     def load_json(self, file_name, path_to_list='', table_name=None, field_name=None, append=False):
-        load_json(file_name, path_to_list, self.schema + "." + table_name, field_name, append=False)
+        load_json(file_name, path_to_list, self.schema + "." + table_name, field_name, append=False, dburi=self.dburi)
 
     def load_xml(self, file_name, tag, table_name=None, field_name=None, append=False):
-        load_xml(file_name, tag, self.schema + "." + table_name, field_name, append=False)
+        load_xml(file_name, tag, self.schema + "." + table_name, field_name, append=False, dburi=self.dburi)
 
 
 class DecimalEncoder(json.JSONEncoder):
