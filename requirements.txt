@@ -7,3 +7,4 @@ jinja2
 lxml
 requests
 pandas
+-e .
