@@ -52,14 +52,32 @@ def generate_rows(result, limit):
             break
         yield [json.dumps(item, indent=2) if isinstance(item, dict) else html.escape(str(item)) for item in row]
 
+def double_quote(word):
+    return '"{}"'.format(word)
+
+def put_quotes_round(table_name):
+    split = table_name.split('.')
+    schema_name = None
+    if len(split) > 1:
+        return (double_quote(split[0]), double_quote('.'.join(split[1:])))
+    else:
+        return (None, double_quote(split[0]))
+        
+
+def table_exists(connection, table, schema):
+    result = connection.execute("select exists(select * from information_schema.tables where table_name=%s and table_schema=%s)", table, schema)
+    return result.fetchall()[0][0]
+
+
 class Session:
-    def __init__(self, schema, dburi=None, drop=False):
+    def __init__(self, schema, dburi=None, drop_schema=False, overwrite=False):
         self.schema = schema
         self.dburi = dburi
         self.engine = get_engine(dburi)
+        self.overwrite = overwrite
         with self.engine.begin() as connection:
-            if drop:
-                connection.execute('drop schema if extist {};'.format(self.schema))
+            if drop_schema:
+                connection.execute('drop schema if exists {} cascade;'.format(self.schema))
             connection.execute('create schema if not exists {};'.format(self.schema))
 
     def run_sql(self, sql, limit=20):
@@ -80,11 +98,69 @@ class Session:
             connection.execute('set local search_path = {};'.format(self.schema))
             return pandas.read_sql_query(sql, connection, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None)
 
-    def load_json(self, file_name, path_to_list='', table_name=None, field_name=None, append=False):
-        load_json(file_name, path_to_list, self.schema + "." + table_name, field_name, append=False, dburi=self.dburi)
+    def load_json(self, file_name, path_to_list='', table_name=None, field_name=None, append=False, overwrite=None):
+        if overwrite is None:
+            overwrite = self.overwrite
+        if not table_name:
+            table_name = os.path.split(file_name)[1].split('.')[0]
+        if not field_name:
+            field_name = path_to_list.split('.')[-1] or 'json'
+        schema_name, table_name = put_quotes_round(table_name)
+        if schema_name is None:
+            schema_name = double_quote(self.schema)
+            full_name = table_name
+        else:
+            full_name = schema_name + "." + table_name
 
-    def load_xml(self, file_name, tag, table_name=None, field_name=None, append=False):
-        load_xml(file_name, tag, self.schema + "." + table_name, field_name, append=False, dburi=self.dburi)
+        with self.engine.begin() as connection:
+            connection.execute('set local search_path = {};'.format(self.schema))
+            ## remove quotes when looking at actual table.
+            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
+                print("WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table")
+                return
+            if not append:
+                connection.execute('drop table if exists {}'.format(full_name))
+
+            connection.execute('create table if not exists {}("{}" jsonb)'.format(full_name, field_name))
+
+            with open(file_name) as f:
+                num = -1
+                for num, item in enumerate(ijson.items(f, path_to_list + '.item')):
+                    connection.execute('insert into {} values (%s)'.format(full_name), json.dumps(item, cls=DecimalEncoder))
+                print("Total rows loaded {}".format(num + 1))
+
+
+    def load_xml(self, file_name, tag, table_name=None, field_name=None, append=False, overwrite=None):
+        if overwrite is None:
+            overwrite = self.overwrite
+        if not table_name:
+            table_name = os.path.split(file_name)[1].split('.')[0]
+        if not field_name:
+            field_name = tag
+        schema_name, table_name = put_quotes_round(table_name)
+        if schema_name is None:
+            schema_name = double_quote(self.schema)
+            full_name = table_name
+        else:
+            full_name = schema_name + "." + table_name
+
+        with self.engine.begin() as connection:
+            connection.execute('set local search_path = {};'.format(self.schema))
+            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
+                print("WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table")
+                return
+            if not append:
+                connection.execute('drop table if exists {}'.format(full_name))
+
+            connection.execute('create table if not exists {}("{}" xml)'.format(full_name, field_name))
+
+            with open(file_name, 'rb') as f:
+                context = lxml.etree.iterparse(f, tag=tag)
+                num = 0
+                for action, elem in context:
+                    num += 1
+                    connection.execute('insert into {} values (%s)'.format(full_name), lxml.etree.tostring(elem, encoding='unicode'))
+                print("Total rows loaded {}".format(num))
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -93,56 +169,5 @@ class DecimalEncoder(json.JSONEncoder):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
 
-def put_quotes_round(table_name):
-    return '.'.join('"{}"'.format(part) for part in table_name.split('.'))
-
-def load_json(file_name, path_to_list='', table_name=None, field_name=None, append=False, dburi=None):
-    if not table_name:
-        table_name = os.path.split(file_name)[1].split('.')[0]
-    if not field_name:
-        field_name = path_to_list.split('.')[-1] or 'json'
-    table_name = put_quotes_round(table_name)
-
-    engine = get_engine(dburi)
-
-    with engine.begin() as connection:
-        if not append:
-            connection.execute('drop table if exists {}'.format(table_name))
-            connection.execute('create table {}("{}" jsonb)'.format(table_name, field_name))
-
-        with open(file_name) as f:
-            for item in ijson.items(f, path_to_list + '.item'):
-                connection.execute('insert into {} values (%s)'.format(table_name), json.dumps(item, cls=DecimalEncoder))
-
-def load_xml(file_name, tag, table_name=None, field_name=None, append=False, dburi=None):
-    if not table_name:
-        table_name = os.path.split(file_name)[1].split('.')[0]
-    if not field_name:
-        field_name = tag
-    table_name = put_quotes_round(table_name)
-    engine = get_engine(dburi)
-
-    with engine.begin() as connection:
-        if not append:
-            connection.execute('drop table if exists {}'.format(table_name))
-            connection.execute('create table {}("{}" xml)'.format(table_name, field_name))
-
-        with open(file_name, 'rb') as f:
-            context = lxml.etree.iterparse(f, tag=tag)
-            for action, elem in context:
-                connection.execute('insert into {} values (%s)'.format(table_name), lxml.etree.tostring(elem, encoding='unicode'))
 
 
-@click.command()
-@click.option('--path', default='', help='path to list in json')
-@click.option('--table', default='', help='tablename')
-@click.option('--field', default='', help='fieldname in table')
-@click.option('--dburi', default='', help='sqlalchemy db uri')
-@click.option('--append', is_flag=True, help='prefix')
-@click.argument('filename')
-def load_json_command_line(filename, path, table, field, append, dburi):
-    load_json(filename, path, table, field, append, dburi)
-
-
-if __name__ == "__main__":
-    load_json_command_line()
