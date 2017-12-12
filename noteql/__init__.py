@@ -17,7 +17,9 @@ from IPython.core.display import display, HTML
 @functools.lru_cache(128)
 def get_engine(dburi):
     if not dburi:
-        dburi = 'postgres://noteql:noteql@db/noteql'
+        dburi = os.environ.get("NOTEQL_DBURI")
+        if not dburi:
+            dburi = 'postgres://noteql:noteql@db/noteql'
     return sqlalchemy.create_engine(dburi)
 
 
@@ -80,29 +82,45 @@ class Session:
                 connection.execute('drop schema if exists {} cascade;'.format(self.schema))
             connection.execute('create schema if not exists {};'.format(self.schema))
 
-    def run_sql(self, sql, limit=20):
+    def get_results(self, sql, limit=-1):
         with self.engine.begin() as connection:
             connection.execute('set local search_path = {};'.format(self.schema))
-            result = connection.execute(sql)
-            if result.returns_rows:
-                context = {
-                    "data": [row for row in generate_rows(result, limit)],
-                    "headers": result.keys()
+            sql_result = connection.execute(sql)
+            if sql_result.returns_rows:
+                results = {
+                    "data": [row for row in generate_rows(sql_result, limit)],
+                    "headers": sql_result.keys()
                 }
-                display(HTML(table.render(context)))
+                return results
             else:
                 return "Success"
+
+    def run_sql(self, sql, limit=20):
+        results = self.get_results(sql, limit)
+        if results == 'Success':
+            return results
+        display(HTML(table.render(results)))
 
     def get_dataframe(self, sql, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None):
         with self.engine.begin() as connection:
             connection.execute('set local search_path = {};'.format(self.schema))
             return pandas.read_sql_query(sql, connection, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None)
 
-    def load_json(self, file_name, path_to_list='', table_name=None, field_name=None, append=False, overwrite=None):
+    def load_json(self, json_file, path_to_list='', single_cell=False, table_name=None, field_name=None, append=False, overwrite=None):
+        file_object = False
+        if hasattr(json_file, 'read'):
+            file_object = True
+            if hasattr(json_file, 'name'):
+                file_name = json_file.name
+            else:
+                file_name = 'import'
+        else:
+            file_name = os.path.split(json_file)[1]
+
         if overwrite is None:
             overwrite = self.overwrite
         if not table_name:
-            table_name = os.path.split(file_name)[1].split('.')[0]
+            table_name = file_name.split('.')[0]
         if not field_name:
             field_name = path_to_list.split('.')[-1] or 'json'
         schema_name, table_name = put_quotes_round(table_name)
@@ -123,11 +141,22 @@ class Session:
 
             connection.execute('create table if not exists {}("{}" jsonb)'.format(full_name, field_name))
 
-            with open(file_name) as f:
+            def load(f):
+                if single_cell:
+                    connection.execute('insert into {} values (%s)'.format(full_name), f.read())
+                    print("Total rows loaded 1")
+                    return
                 num = -1
-                for num, item in enumerate(ijson.items(f, path_to_list + '.item')):
+                for num, item in enumerate(ijson.items(f, path_to_list + ('.' if path_to_list else '') + 'item')):
                     connection.execute('insert into {} values (%s)'.format(full_name), json.dumps(item, cls=DecimalEncoder))
                 print("Total rows loaded {}".format(num + 1))
+
+
+            if file_object:
+                load(json_file)
+            else:
+                with open(json_file) as f:
+                    load(f)
 
 
     def load_xml(self, file_name, tag, table_name=None, field_name=None, append=False, overwrite=None):
