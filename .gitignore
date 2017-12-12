@@ -1,3 +1,5 @@
 pgdata
 pgadmin
 files
+_build
+.ipynb_checkpoints

@@ -1,0 +1,7 @@
+{"people": [
+  {"id": "1", "name": "Kat", "age": "45"},
+  {"id": "2", "name": "Fred", "age": "45", "someField": "foo"},
+  {"id": "3", "name": "Di", "age": "45"}
+],
+ "other": "not_looked_at"
+}
