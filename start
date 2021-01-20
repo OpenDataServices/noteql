@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-docker volume create --name noteql-postgresql -d local 
-docker-compose up -d

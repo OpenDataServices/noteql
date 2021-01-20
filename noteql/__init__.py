@@ -3,16 +3,12 @@ import ijson
 import os
 import json
 import decimal
-import click
-import jinja2
 import functools
 import lxml.etree
 import html
 import pandas
-from IPython.core.display import display, HTML
 
-
-
+LOCAL_DB_MADE = False
 
 @functools.lru_cache(128)
 def get_engine(dburi):
@@ -23,36 +19,12 @@ def get_engine(dburi):
     return sqlalchemy.create_engine(dburi)
 
 
-table = jinja2.Template(
-'''
-<table>
-    <thead>
-    <tr>
-      {% for header in headers %}
-        <th style="text-align: left; vertical-align: top">{{ header }}</th>
-      {% endfor %}
-    </tr>
-    </thead>
-    <tbody>
-      {% for row in data %}
-        <tr>
-          {% for cell in row %}
-              <td style="text-align: left; vertical-align: top">
-                <pre>{{ cell }}</pre>
-              </td>
-          {% endfor %}
-        </tr>
-      {% endfor %}
-    </tbody>
-</table>
-'''
-)
-
 def generate_rows(result, limit):
     for num, row in enumerate(result):
         if num == limit:
             break
         yield [json.dumps(item, indent=2) if isinstance(item, dict) else html.escape(str(item)) for item in row]
+
 
 def double_quote(word):
     return '"{}"'.format(word)
@@ -70,6 +42,31 @@ def table_exists(connection, table, schema):
     result = connection.execute("select exists(select * from information_schema.tables where table_name=%s and table_schema=%s)", table, schema)
     return result.fetchall()[0][0]
 
+
+def create_local_db():
+    global LOCAL_DB_MADE
+    if LOCAL_DB_MADE:
+        return
+    import subprocess
+    cmd = '''
+        pip install --upgrade 'ocdskingfishercolab<0.4' pandas psycopg2-binary > pip.log
+        echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        DEBIAN_FRONTEND=noninteractive sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive sudo apt-get -y install postgresql
+        service postgresql start
+        sudo -u postgres psql -c "CREATE USER root WITH SUPERUSER"
+    '''
+    process = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print(process.stderr.decode())
+    if process.returncode == 0:
+        print("Local DB Made")
+        LOCAL_DB_MADE = True
+
+def local_db_session():
+    create_local_db()
+    return Session('public', 'postgresql+psycopg2://root@/postgres')
 
 class Session:
     def __init__(self, schema, dburi=None, drop_schema=False, overwrite=False):
@@ -99,7 +96,6 @@ class Session:
         results = self.get_results(sql, limit)
         if results == 'Success':
             return results
-        display(HTML(table.render(results)))
 
     def get_dataframe(self, sql, index_col=None, coerce_float=True, params=None, parse_dates=None, chunksize=None):
         with self.engine.begin() as connection:
@@ -139,16 +135,16 @@ class Session:
             if not append:
                 connection.execute('drop table if exists {}'.format(full_name))
 
-            connection.execute('create table if not exists {}("{}" jsonb)'.format(full_name, field_name))
+            connection.execute('create table if not exists {}(id serial, "{}" jsonb)'.format(full_name, field_name))
 
             def load(f):
                 if single_cell:
-                    connection.execute('insert into {} values (%s)'.format(full_name), f.read())
+                    connection.execute('insert into {}({}) values (%s)'.format(full_name, field_name), f.read())
                     print("Total rows loaded 1")
                     return
                 num = -1
                 for num, item in enumerate(ijson.items(f, path_to_list + ('.' if path_to_list else '') + 'item')):
-                    connection.execute('insert into {} values (%s)'.format(full_name), json.dumps(item, cls=DecimalEncoder))
+                    connection.execute('insert into {}({}) values (%s)'.format(full_name, field_name), json.dumps(item, cls=DecimalEncoder))
                 print("Total rows loaded {}".format(num + 1))
 
 
@@ -191,12 +187,83 @@ class Session:
                     connection.execute('insert into {} values (%s)'.format(full_name), lxml.etree.tostring(elem, encoding='unicode'))
                 print("Total rows loaded {}".format(num))
 
+    def load_dataframe(self, dataframe, table_name, if_exists='fail', index=True, index_label=None, chunksize=None, dtype=None, method=None):
+        with self.engine.begin() as connection:
+            connection.execute('set local search_path = {};'.format(self.schema))
+            dataframe.to_sql(table_name, connection, if_exists=if_exists, index=index, index_label=index_label, chunksize=chunksize, dtype=dtype, method=method)
+
+    def add_flatten_function(self):
+        self.run_sql('''
+            -- Reference: https://www.postgresql.org/docs/current/queries-with.html
+            CREATE OR REPLACE FUNCTION flatten (jsonb)
+                RETURNS TABLE (
+                    path text,
+                    object_property integer,
+                    array_item integer)
+                LANGUAGE sql
+                IMMUTABLE
+                STRICT
+                PARALLEL SAFE
+                AS $$
+                WITH RECURSIVE t (
+                    key,
+                    value,
+                    object_property,
+                    array_item
+                ) AS (
+                    SELECT
+                        j.key,
+                        j.value,
+                        1,
+                        0
+                    FROM
+                        jsonb_each($1) AS j
+                    UNION ALL (
+                        WITH prev AS (
+                            SELECT
+                                *
+                            FROM
+                                t -- recursive reference to query "t" must not appear more than once
+                        )
+
+                        SELECT
+                            prev.key || '/' || next.key,
+                            next.value,
+                            1,
+                            0
+                        FROM
+                            prev,
+                            jsonb_each(prev.value) next
+                        WHERE
+                            jsonb_typeof(prev.value) = 'object'
+
+                        UNION ALL
+
+                        SELECT
+                            prev.key,
+                            next.value,
+                            0,
+                            1
+                        FROM
+                            prev,
+                            jsonb_array_elements(prev.value) next
+                        WHERE
+                            jsonb_typeof(prev.value) = 'array'
+                            AND jsonb_typeof(prev.value -> 0) = 'object'
+                    )
+                )
+                SELECT
+                    key AS path,
+                    object_property,
+                    array_item
+                FROM
+                    t;
+
+            $$;
+            ''')
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, decimal.Decimal):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
-
-
-

@@ -10,5 +10,8 @@ setup(name='noteql',
       author_email='david.raznick@opendataservices.coop',
       url='https://github.com/OpenDataServices/noteql',
       packages=['noteql'],
+      install_requires=[
+           'ijson',
+        ]
      )
      
