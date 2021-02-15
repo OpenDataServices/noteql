@@ -12,6 +12,7 @@ setup(name='noteql',
       packages=['noteql'],
       install_requires=[
            'ijson',
+           'xmltodict',
         ]
      )
      
