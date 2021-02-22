@@ -146,6 +146,16 @@ class Session:
                 chunksize=None,
             )
 
+    def show_dataframe(self, sql, title=None, title_size='h3', **kwargs):
+        from IPython.display import display
+        from IPython.display import HTML
+
+        if title:
+            display(HTML(f'</br></br><{title_size}>{title}<{title_size}/>'))
+
+        display(self.get_dataframe(sql, **kwargs))
+        
+
     def load_json(
         self,
         json_file,
