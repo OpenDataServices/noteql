@@ -116,6 +116,15 @@ class Session:
         if results == "Success":
             return results
 
+    def create_table(self, table, sql):
+        sql = '''
+            DROP TABLE IF EXISTS {table};
+            CREATE TABLE {table}
+            AS
+            {sql}
+        '''.format(table=table, sql=sql)
+        return self.run_sql(sql)
+
     def get_dataframe(
         self,
         sql,
