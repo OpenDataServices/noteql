@@ -62,7 +62,7 @@ def create_local_db():
     import subprocess
 
     cmd = """
-        pip install --upgrade 'ocdskingfishercolab<0.4' pandas psycopg2-binary > pip.log
+        pip install --upgrade psycopg2-binary > pip.log
         echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
         sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
         wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
