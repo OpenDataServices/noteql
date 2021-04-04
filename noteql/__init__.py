@@ -12,7 +12,6 @@ import xmltodict
 LOCAL_DB_MADE = False
 
 
-@functools.lru_cache(128)
 def get_engine(dburi):
     if not dburi:
         dburi = os.environ.get("NOTEQL_DBURI")
