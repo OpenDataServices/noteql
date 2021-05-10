@@ -29,14 +29,14 @@ session = noteql.Session('postgresql://user:password@localhost/dbname')
 # session = noteql.local_db_session() 
 ```
 
-The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  It also installs these magics.
+The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  Also by calling it like the above installs the magics.
 
 
 ## Magic Usage
 
 ### Pandas Dataframe 
 
-Simple display dataframe of results. It is recommended to add a limit if selecting from large table.
+Run the followint to display a dataframe. It is recommended to add a limit if selecting from large table.
 
 ```python
 %%nql
@@ -72,7 +72,7 @@ SELECT * FROM mytable
 
 ### Table Creation 
 
-If you have a writable database and you want to save the results of a query to a table use the `CREATE` command. This will drop the table first so be warned! This is so that the steps can be repeated without error. This will fail if there are multiple SQL statements in the cell separated by `;`
+If you have a writable database and you want to save the results of a query you can use the `CREATE` command. This will drop the table first so be warned! This is so that the steps can be repeated without error. This will fail if there are multiple SQL statements in the cell separated by `;`.
 
 ```python
 %%nql CREATE mynewtable
@@ -82,7 +82,7 @@ SELECT * FROM mytable
 
 ### Parameter passing. 
 
-The simplest is to use python format strings. The library has access to your local variables to format them. This works for both `%%nql` and `%nql`.
+The simplest is to use python format strings. magics have access to your local variables. This works for both `%%nql` and `%nql`.
 
 ```python
 myvariable = 24
