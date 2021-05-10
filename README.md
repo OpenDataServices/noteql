@@ -29,14 +29,14 @@ session = noteql.Session('postgresql://user:password@localhost/dbname')
 # session = noteql.local_db_session() 
 ```
 
-The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  Also by calling it like the above installs the magics.
+The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  Also by calling it, like the above, installs the magics.
 
 
 ## Magic Usage
 
 ### Pandas Dataframe 
 
-Run the followint to display a dataframe. It is recommended to add a limit if selecting from large table.
+Run the following to display a dataframe. It is recommended to add a limit if selecting from large table.
 
 ```python
 %%nql
