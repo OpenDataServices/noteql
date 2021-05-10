@@ -134,9 +134,9 @@ SELECT * FROM mytable where name = :name
 
 ### Multiple Statements in one cell
 
-Sometime putting all your SQL statements in separate cells can make your notebook looks messy or hard to follow. If you start any line in your SQL with `%%nql` then it will work the same as using it at the top of the cell.
+Sometimes putting all your SQL statements in separate cells can make your notebook look messy or hard to follow. If you start any line in your SQL with `%%nql` then it will work the same as using it at the top of a new cell.
 
-This example will create a new table and them preview it in one cell:
+This example will create a new table and then preview it in one cell:
 
 ```python
 %%nql CREATE mynewtable
@@ -151,7 +151,7 @@ If you put multiple SHOW commands in one cell then the results will be shown aft
 
 ### Multiple sessions in one notebook
 
-If you define another session then that session will be used from then on:
+If you define another session then that session will be used instead:
 
 ```python
 session2 = noteql.Session('postgresql://user:password@localhost/dbname')
