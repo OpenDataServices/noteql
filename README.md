@@ -29,7 +29,7 @@ session = noteql.Session('postgresql://user:password@localhost/dbname')
 # session = noteql.local_db_session() 
 ```
 
-The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  Also by calling it, like the above, installs the magics.
+The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  Also, by making any Session object it will install the magics.
 
 
 ## Magic Usage
