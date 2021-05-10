@@ -3,6 +3,7 @@ import ijson
 import os
 import json
 import decimal
+import datetime
 import functools
 import lxml.etree
 import html
@@ -106,6 +107,11 @@ class Session:
 
         ipython = get_ipython()
         ipython.register_magics(Noteql)
+        self.set()
+
+    def set(self):
+        print(f'Using db connection {self.dburi} {"schema:" + self.schema if self.schema else ""}') 
+        self.last_set = datetime.datetime.utcnow()
 
     def get_results(self, sql, limit=-1):
         with self.engine.begin() as connection:
@@ -440,6 +446,7 @@ class DecimalEncoder(json.JSONEncoder):
 class Noteql(Magics):
 
     def get_parsers(self):
+        session = (pp.Keyword("session", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("session"))("session")
         arg = (pp.Word(pp.alphanums) + pp.Suppress("=") + (pp.Word(pp.alphanums) | pp.QuotedString("'", escQuote="'", unquoteResults=False)))("arg_params")
         show = pp.Keyword("show", caseless=True)("show")
         create = (pp.Keyword("create", caseless=True).suppress()  + (pp.Word(pp.alphanums+"_") | pp.QuotedString('"', escQuote='"', unquoteResults=False))("create"))
@@ -447,24 +454,34 @@ class Noteql(Magics):
         params = (pp.Keyword("params", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("params"))
         rest = pp.Word(pp.printables)("rest") 
 
-        magic_line_parser = pp.ZeroOrMore(pp.Group(arg | create | df | params | show | rest), stopOn=pp.LineEnd())
+        magic_line_parser = pp.ZeroOrMore(pp.Group(arg | session | create | df | params | show | rest), stopOn=pp.LineEnd())
 
         cell_parser = pp.OneOrMore(pp.SkipTo((pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser)) | pp.StringEnd(), include=True))
 
         return magic_line_parser, cell_parser
 
-    def execute_part(self, parsed_line, sql):
+    def find_session(self):
         ns = self.shell.user_ns
- 
-    
-        sql = sql.format(**ns)
-        
+
+        latest_session = None
+
         for key, value in ns.items():
             if isinstance(value, Session):
-                session = value
-                break
-        else:
+                if not latest_session or value.last_set > latest_session.last_set:
+                    latest_session = value
+
+        if not latest_session:
             print('Need to define noteql seesion')
+            return
+
+        return latest_session
+
+    def execute_part(self, parsed_line, sql):
+        ns = self.shell.user_ns
+    
+        sql = sql.format(**ns)
+
+        session = self.find_session()
                
         actions = {}
         params = {}
@@ -474,6 +491,18 @@ class Noteql(Magics):
             if item.getName() == 'rest':
                 print(f'Syntax error in %%nql not expecting {item}')
                 return
+
+            if item.getName() == 'session':
+                param_name = item[0]
+                variable = ns.get(param_name)
+                if not variable:
+                    print(f'Error in %%nql, variable {param_name} does not exist in your notebook')
+                    return
+                if not isinstance(variable, Session):
+                    print(f'Error in %%nql, variable {param_name} is not a seesion')
+                    return
+                variable.set()
+                session = variable
             
             if item.getName() == 'params':
                 param_name = item[0]
@@ -553,12 +582,7 @@ class Noteql(Magics):
             ns = self.shell.user_ns
             sql = line.format(**ns)
     
-            for key, value in ns.items():
-                if isinstance(value, Session):
-                    session = value
-                    break
-            else:
-                print('Need to define noteql seesion')
-                return
+            session = self.find_session()
+
             return session.get_dataframe(sql)            
 
