@@ -452,9 +452,10 @@ class Noteql(Magics):
         create = (pp.Keyword("create", caseless=True).suppress()  + (pp.Word(pp.alphanums+"_") | pp.QuotedString('"', escQuote='"', unquoteResults=False))("create"))
         df = (pp.Keyword("df", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("df"))
         params = (pp.Keyword("params", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("params"))
+        noformat = (pp.Keyword("noformat", caseless=True) | pp.Keyword("nof", caseless=True))("noformat")
         rest = pp.Word(pp.printables)("rest") 
 
-        magic_line_parser = pp.ZeroOrMore(pp.Group(arg | session | create | df | params | show | rest), stopOn=pp.LineEnd())
+        magic_line_parser = pp.ZeroOrMore(pp.Group(arg | session | create | df | params | noformat | show | rest), stopOn=pp.LineEnd())
 
         cell_parser = pp.OneOrMore(pp.SkipTo((pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser)) | pp.StringEnd(), include=True))
 
@@ -479,12 +480,12 @@ class Noteql(Magics):
     def execute_part(self, parsed_line, sql):
         ns = self.shell.user_ns
     
-        sql = sql.format(**ns)
 
         session = self.find_session()
                
         actions = {}
         params = {}
+        format = True
         
         for item in parsed_line:
          
@@ -539,7 +540,12 @@ class Noteql(Magics):
 
             if item.getName() == 'show':
                 actions['show'] = True
+
+            if item.getName() == 'noformat':
+                format = False
         
+        if format:
+            sql = sql.format(**ns)
      
         if not actions:
             actions['show'] = True

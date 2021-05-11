@@ -13,6 +13,14 @@ setup(name='noteql',
       install_requires=[
            'ijson',
            'xmltodict',
+           'sqlalchemy',
+           'psycopg2',
+           'ijson',
+           'click',
+           'jupyter',
+           'jinja2',
+           'lxml',
+           'requests',
+           'pandas'
         ]
      )
-     
