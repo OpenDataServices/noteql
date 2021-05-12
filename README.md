@@ -10,7 +10,7 @@ Adds `%%nql` and `%nql` magics.
 To install in a notebook:
 
 ```
-!pip install git+https://github.com/opendataservices/noteql@main#egg=noteql > pip.log
+!pip install noteql > pip.log
 ```
 
 ## Setup
@@ -149,6 +149,46 @@ SELECT * FROM mynewtable LIMIT 10
 
 If you put multiple SHOW commands in one cell then the results will be shown after each other.
 
+
+### Save the SQL in a variable
+
+Sometimes you want to write a some sql that would be useful in other queries. The SQL command saves the sql as a string in a variable.
+This saves 'SELECT * FROM mytable' in a variable `somesql`.
+
+```python
+%%nql SQL somesql
+SELECT * FROM mytable 
+```
+
+Then you can substitute it using format strings:
+
+```python
+%%nql
+{somesql} where name='david'
+```
+
+This could be done in one cell and is useful if you want to see the results of a query while also using it in another query.
+
+```python
+%%nql SQL all_names SHOW
+select distinct(name) from mytable
+
+%%nql
+select * from other_table where name in ({all_names})
+```
+
+This will ouput two tablse ones with the `distinct(names)` and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.
+
+```python
+%%nql SQL all_names SHOW
+select distinct(name) from mytable
+
+%%nql
+with mytable as ({mytable})
+
+select * from other_table join mytable using(name)
+```
+
 ### Multiple sessions in one notebook
 
 If you define another session then that session will be used instead:
@@ -175,6 +215,15 @@ SELECT * FROM mytable
 
 ## Using the session directly.
 
-All functions in the magics are availible on the session object too.
 
-TODO document how to use these and the load commands on the session.
+### Tables and Fields
+
+The `session.tables` function gives you all the tables in the specified database (or schema) and the `session.fields` gives the fields in a table.
+
+```python 
+session.tables()
+
+session.fields('mytable')
+```
+
+TODO document how to use of the load commands on the session.

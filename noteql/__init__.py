@@ -12,9 +12,10 @@ import xmltodict
 import pyparsing as pp
 import subprocess
 from collections import defaultdict
-from IPython.core.magic import (Magics, magics_class, line_cell_magic)
-from IPython.display import (display, HTML)
+from IPython.core.magic import Magics, magics_class, line_cell_magic
+from IPython.display import display, HTML
 from IPython import get_ipython
+from noteql.schema_queries import queries
 
 
 LOCAL_DB_MADE = False
@@ -32,12 +33,7 @@ def generate_rows(result, limit):
     for num, row in enumerate(result):
         if num == limit:
             break
-        yield [
-            json.dumps(item, indent=2)
-            if isinstance(item, dict)
-            else html.escape(str(item))
-            for item in row
-        ]
+        yield [json.dumps(item, indent=2) if isinstance(item, dict) else html.escape(str(item)) for item in row]
 
 
 def double_quote(word):
@@ -77,9 +73,7 @@ def create_local_db():
         service postgresql start
         sudo -u postgres psql -c "CREATE USER root WITH SUPERUSER"
     """
-    process = subprocess.run(
-        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+    process = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     print(process.stderr.decode())
     if process.returncode == 0:
         print("Local DB Made")
@@ -92,32 +86,59 @@ def local_db_session():
 
 
 class Session:
-    def __init__(self, dburi, schema=None, drop_schema=False, overwrite=False):
+    def __init__(self, dburi, schema=None, drop_schema=False, overwrite=False, df_viewer=None, df_viewer_kw=None):
         self.schema = schema
         self.dburi = dburi
+        self.df_viewer = df_viewer
+        self.df_viewer_kw = df_viewer_kw or {}
+
         self.engine = get_engine(dburi)
+        ## test connection
+        with self.engine.begin() as connection:
+            pass
+
+        self.database_type = self.engine.dialect.name
+
         self.overwrite = overwrite
         if schema:
             with self.engine.begin() as connection:
                 if drop_schema:
-                    connection.execute(
-                        "drop schema if exists {} cascade;".format(self.schema)
-                    )
+                    connection.execute("drop schema if exists {} cascade;".format(self.schema))
                 connection.execute("create schema if not exists {};".format(self.schema))
 
         ipython = get_ipython()
         ipython.register_magics(Noteql)
         self.set()
 
+    def tables(self):
+        database_queries = queries.get(self.database_type)
+        if not database_queries:
+            print(f"Database {self.database_type} not supported")
+            return
+
+        sql = database_queries["table"]
+        return self.get_dataframe(sql)
+
+    def fields(self, table):
+        database_queries = queries.get(self.database_type)
+        if not database_queries:
+            print(f"Database {self.database_type} not supported")
+            return
+        sql = database_queries["field"]
+        return self.get_dataframe(sql, params=[table])
+
     def set(self):
-        print(f'Using db connection {self.dburi} {"schema:" + self.schema if self.schema else ""}') 
+        print(f'Using db connection {self.dburi} {"schema:" + self.schema if self.schema else ""}')
         self.last_set = datetime.datetime.utcnow()
 
-    def get_results(self, sql, limit=-1):
+    def get_results(self, sql, limit=-1, params=None):
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
-            sql_result = connection.execute(sql)
+            if params:
+                sql_result = connection.execute(sql, params)
+            else:
+                sql_result = connection.execute(sql)
             if sql_result.returns_rows:
                 results = {
                     "data": [row for row in generate_rows(sql_result, limit)],
@@ -127,22 +148,28 @@ class Session:
             else:
                 return "Success"
 
-    def run_sql(self, sql, limit=20):
-        results = self.get_results(sql, limit)
+    def run_sql(self, sql, limit=20, params=None):
+        results = self.get_results(sql, limit, params=params)
         if results == "Success":
             return results
 
-    def create_table(self, table, sql):
-        self.run_sql('''
+    def create_table(self, table, sql, params=None):
+        self.run_sql(
+            """
             DROP TABLE IF EXISTS {table};
-        '''.format(table=table))
+        """.format(
+                table=table
+            )
+        )
 
-        sql = '''
+        sql = """
             CREATE TABLE {table}
             AS
             {sql}
-        '''.format(table=table, sql=sql)
-        return self.run_sql(sql)
+        """.format(
+            table=table, sql=sql
+        )
+        return self.run_sql(sql, params=params)
 
     def get_dataframe(
         self,
@@ -166,14 +193,18 @@ class Session:
                 chunksize=chunksize,
             )
 
-    def show_dataframe(self, sql, title=None, title_size='h3', **kwargs):
+    def show_dataframe(self, sql, title=None, title_size="h3", **kwargs):
         if title:
-            self.show_title(title)
+            self.show_title(title, title_size)
 
-        display(self.get_dataframe(sql, **kwargs))
+        df = self.get_dataframe(sql, **kwargs)
 
-    def show_title(self, title):
-        display(HTML(f'</br></br><{title_size}>{title}<{title_size}/>'))
+        if self.df_viewer:
+            df = self.df_viewer(df, **self.df_viewer_kw)
+        display(df)
+
+    def show_title(self, title, title_size="h3"):
+        display(HTML(f"</br></br><{title_size}>{title}<{title_size}/>"))
 
     def load_json(
         self,
@@ -212,11 +243,7 @@ class Session:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
             ## remove quotes when looking at actual table.
-            if (
-                table_exists(connection, table_name[1:-1], schema_name[1:-1])
-                and not overwrite
-                and not append
-            ):
+            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
                 print(
                     "WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table"
                 )
@@ -224,11 +251,7 @@ class Session:
             if not append:
                 connection.execute("drop table if exists {}".format(full_name))
 
-            connection.execute(
-                'create table if not exists {}(id serial, "{}" jsonb)'.format(
-                    full_name, field_name
-                )
-            )
+            connection.execute('create table if not exists {}(id serial, "{}" jsonb)'.format(full_name, field_name))
 
             def load(f):
                 if single_cell:
@@ -239,11 +262,7 @@ class Session:
                     print("Total rows loaded 1")
                     return
                 num = -1
-                for num, item in enumerate(
-                    ijson.items(
-                        f, path_to_list + ("." if path_to_list else "") + "item"
-                    )
-                ):
+                for num, item in enumerate(ijson.items(f, path_to_list + ("." if path_to_list else "") + "item")):
                     connection.execute(
                         "insert into {}({}) values (%s)".format(full_name, field_name),
                         json.dumps(item, cls=DecimalEncoder),
@@ -284,11 +303,7 @@ class Session:
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
-            if (
-                table_exists(connection, table_name[1:-1], schema_name[1:-1])
-                and not overwrite
-                and not append
-            ):
+            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
                 print(
                     "WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table"
                 )
@@ -305,11 +320,7 @@ class Session:
                 extra_create += ", {} JSONB".format(json_field)
                 extra_params += ", %s"
 
-            connection.execute(
-                'create table if not exists {}("{}" xml {})'.format(
-                    full_name, field_name, extra_create
-                )
-            )
+            connection.execute('create table if not exists {}("{}" xml {})'.format(full_name, field_name, extra_create))
 
             all_rows = []
             with open(file_name, "rb") as f:
@@ -333,7 +344,7 @@ class Session:
             if all_rows:
                 connection.execute(
                     "insert into {} values (%s {})".format(full_name, extra_params),
-                    *all_rows
+                    *all_rows,
                 )
             print("Total rows loaded {}".format(num))
 
@@ -444,20 +455,36 @@ class DecimalEncoder(json.JSONEncoder):
 
 @magics_class
 class Noteql(Magics):
-
     def get_parsers(self):
-        session = (pp.Keyword("session", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("session"))("session")
-        arg = (pp.Word(pp.alphanums) + pp.Suppress("=") + (pp.Word(pp.alphanums) | pp.QuotedString("'", escQuote="'", unquoteResults=False)))("arg_params")
+        session = (pp.Keyword("session", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("session"))("session")
+        arg = (
+            pp.Word(pp.alphanums)
+            + pp.Suppress("=")
+            + (pp.Word(pp.alphanums) | pp.QuotedString("'", escQuote="'", unquoteResults=False))
+        )("arg_params")
         show = pp.Keyword("show", caseless=True)("show")
-        create = (pp.Keyword("create", caseless=True).suppress()  + (pp.Word(pp.alphanums+"_") | pp.QuotedString('"', escQuote='"', unquoteResults=False))("create"))
-        df = (pp.Keyword("df", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("df"))
-        params = (pp.Keyword("params", caseless=True).suppress() + pp.Word(pp.alphanums+"_")("params"))
+        create = pp.Keyword("create", caseless=True).suppress() + (
+            pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
+        )("create")
+        df = pp.Keyword("df", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("df")
+        df_arrows = (pp.Word(pp.alphanums + "_") + pp.Keyword("<<").suppress())("df")
+        sql = pp.Keyword("sql", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("sql")
+        title = pp.Keyword("title", caseless=True).suppress() + pp.QuotedString("'", escQuote="'")("title")
+        params = pp.Keyword("params", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("params")
         noformat = (pp.Keyword("noformat", caseless=True) | pp.Keyword("nof", caseless=True))("noformat")
-        rest = pp.Word(pp.printables)("rest") 
+        rest = pp.Word(pp.printables)("rest")
 
-        magic_line_parser = pp.ZeroOrMore(pp.Group(arg | session | create | df | params | noformat | show | rest), stopOn=pp.LineEnd())
+        magic_line_parser = pp.ZeroOrMore(
+            pp.Group(arg | session | create | df | df_arrows | params | sql | noformat | title | show | rest),
+            stopOn=pp.LineEnd(),
+        )
 
-        cell_parser = pp.OneOrMore(pp.SkipTo((pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser)) | pp.StringEnd(), include=True))
+        cell_parser = pp.OneOrMore(
+            pp.SkipTo(
+                (pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser)) | pp.StringEnd(),
+                include=True,
+            )
+        )
 
         return magic_line_parser, cell_parser
 
@@ -472,106 +499,121 @@ class Noteql(Magics):
                     latest_session = value
 
         if not latest_session:
-            print('Need to define noteql seesion')
+            print("Need to define noteql seesion")
             return
 
         return latest_session
 
     def execute_part(self, parsed_line, sql):
         ns = self.shell.user_ns
-    
 
         session = self.find_session()
-               
+
         actions = {}
         params = {}
         format = True
-        
+
         for item in parsed_line:
-         
-            if item.getName() == 'rest':
-                print(f'Syntax error in %%nql not expecting {item}')
+
+            if item.getName() == "rest":
+                print(f"Syntax error in %%nql not expecting {item}")
                 return
 
-            if item.getName() == 'session':
+            if item.getName() == "session":
                 param_name = item[0]
                 variable = ns.get(param_name)
                 if not variable:
-                    print(f'Error in %%nql, variable {param_name} does not exist in your notebook')
+                    print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
                     return
                 if not isinstance(variable, Session):
-                    print(f'Error in %%nql, variable {param_name} is not a seesion')
+                    print(f"Error in %%nql, variable {param_name} is not a seesion")
                     return
                 variable.set()
                 session = variable
-            
-            if item.getName() == 'params':
+
+            if item.getName() == "params":
                 param_name = item[0]
                 variable = ns.get(param_name)
                 if not variable:
-                    print(f'Error in %%nql, variable {param_name} does not exist in your notebook')
+                    print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
                     return
                 params = variable
 
-            if item.getName() == 'arg_params':
+            if item.getName() == "arg_params":
                 param_name, param_value = item
                 if param_value[0] == "'":
                     params[param_name] = param_value[1:-1]
                 else:
                     variable = ns.get(param_value)
                     if not variable:
-                        print(f'Error in %%nql, variable {param_name} does not exist in your notebook')
+                        print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
                         return
                     if params:
-                        print('Error in %%nql, can not use supplied params with the `params` argument')
+                        print("Error in %%nql, can not use supplied params with the `PARAMS` argument")
                         return
                     params[param_name] = variable
-                    
-            if item.getName() == 'df':
-                if 'df' in actions:
-                    print(f'Error in %%nql, multiple df statements specified')
-                    return
-                actions['df'] = item[0]            
-            if item.getName() == 'create':
-                if 'create' in actions:
-                    print(f'Error in %%nql, multiple create statements specified')
-                    return
-                actions['create'] = item[0]
 
-            if item.getName() == 'show':
-                actions['show'] = True
+            if item.getName() == "df":
+                if "df" in actions:
+                    print(f"Error in %%nql, multiple DF statements specified")
+                    return
+                actions["df"] = item[0]
+            if item.getName() == "sql":
+                if "sql" in actions:
+                    print(f"Error in %%nql, multiple SQL statements specified")
+                    return
+                actions["sql"] = item[0]
+            if item.getName() == "create":
+                if "create" in actions:
+                    print(f"Error in %%nql, multiple CREATE statements specified")
+                    return
+                actions["create"] = item[0]
 
-            if item.getName() == 'noformat':
+            if item.getName() == "show":
+                actions["show"] = True
+
+            if item.getName() == "noformat":
                 format = False
-        
+
+            if item.getName() == "title":
+                session.show_title(item[0])
+
         if format:
             sql = sql.format(**ns)
-     
+
+        sql_variable = actions.get("sql")
+        if sql_variable:
+            ns[sql_variable] = sql
+
         if not actions:
-            actions['show'] = True
+            actions["show"] = True
+
+        if not params:
+            params = None
 
         df = None
-        
-        df_name = actions.get('df')
-        show = 'show' in actions 
-        
+        df_name = actions.get("df")
+
+        show = "show" in actions
+
         if show or df_name:
-            if not params:
-                params=None
             df = session.get_dataframe(sql, params=params)
-            if show:
-                display(df)
             if df_name:
                 ns[df_name] = df
-        
-        create_name = actions.get('create')
-        
+
+            if show:
+                if session.df_viewer:
+                    df = session.df_viewer(df, **session.df_viewer_kw)
+                display(df)
+
+        create_name = actions.get("create")
+
         if create_name:
-            session.create_table(create_name, sql)
-                 
+            session.create_table(create_name, sql, params)
+
     @line_cell_magic
     def nql(self, line, cell=None):
-        
+
         if cell:
             magic_line_parser, cell_parser = self.get_parsers()
 
@@ -582,13 +624,12 @@ class Noteql(Magics):
 
             for parsed_line, sql in zip(parsed_cell[1::2], parsed_cell[2::2]):
                 if not sql.strip():
-                    print(f'Error in %%nql, empty sql statement')
+                    print(f"Error in %%nql, empty sql statement")
                 self.execute_part(parsed_line[1:], sql)
         else:
             ns = self.shell.user_ns
             sql = line.format(**ns)
-    
+
             session = self.find_session()
 
-            return session.get_dataframe(sql)            
-
+            return session.get_dataframe(sql)
