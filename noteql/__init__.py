@@ -204,7 +204,7 @@ class Session:
         display(df)
 
     def show_title(self, title, title_size="h3"):
-        display(HTML(f"</br></br><{title_size}>{title}<{title_size}/>"))
+        display(HTML(f"</br><{title_size}>{title}<{title_size}/>"))
 
     def load_json(
         self,
@@ -456,27 +456,34 @@ class DecimalEncoder(json.JSONEncoder):
 @magics_class
 class Noteql(Magics):
     def get_parsers(self):
-        session = (pp.Keyword("session", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("session"))("session")
         arg = (
             pp.Word(pp.alphanums)
             + pp.Suppress("=")
             + (pp.Word(pp.alphanums) | pp.QuotedString("'", escQuote="'", unquoteResults=False))
         )("arg_params")
-        show = pp.Keyword("show", caseless=True)("show")
+
         create = pp.Keyword("create", caseless=True).suppress() + (
             pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
         )("create")
-        df = pp.Keyword("df", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("df")
         df_arrows = (pp.Word(pp.alphanums + "_") + pp.Keyword("<<").suppress())("df")
-        sql = pp.Keyword("sql", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("sql")
+
+        commands = [arg, create, df_arrows]
+
+        for cmd_string in ['df', 'sql', 'params', 'session', 'row', 'rows', 'col', 'cols', 'cell']:
+            commands.append(
+               pp.Keyword(cmd_string, caseless=True).suppress() + pp.Word(pp.alphanums + "_")(cmd_string)
+            )
+
         title = pp.Keyword("title", caseless=True).suppress() + pp.QuotedString("'", escQuote="'")("title")
-        params = pp.Keyword("params", caseless=True).suppress() + pp.Word(pp.alphanums + "_")("params")
         noformat = (pp.Keyword("noformat", caseless=True) | pp.Keyword("nof", caseless=True))("noformat")
+        show = pp.Keyword("show", caseless=True)("show")
         rest = pp.Word(pp.printables)("rest")
 
+        commands.extend([title, noformat, show, rest])
+
         magic_line_parser = pp.ZeroOrMore(
-            pp.Group(arg | session | create | df | df_arrows | params | sql | noformat | title | show | rest),
-            stopOn=pp.LineEnd(),
+            pp.Group(pp.MatchFirst(commands)),
+            stopOn=pp.LineEnd()
         )
 
         cell_parser = pp.OneOrMore(
@@ -553,21 +560,12 @@ class Noteql(Magics):
                         return
                     params[param_name] = variable
 
-            if item.getName() == "df":
-                if "df" in actions:
-                    print(f"Error in %%nql, multiple DF statements specified")
-                    return
-                actions["df"] = item[0]
-            if item.getName() == "sql":
-                if "sql" in actions:
-                    print(f"Error in %%nql, multiple SQL statements specified")
-                    return
-                actions["sql"] = item[0]
-            if item.getName() == "create":
-                if "create" in actions:
-                    print(f"Error in %%nql, multiple CREATE statements specified")
-                    return
-                actions["create"] = item[0]
+            for command in ['df', 'sql', 'create', 'row', 'rows', 'col', 'cols', 'cell']:
+                if item.getName() == command:
+                    if command in actions:
+                        print(f"Error in %%nql, multiple {command.upper()} statements specified")
+                        return
+                    actions[command] = item[0]
 
             if item.getName() == "show":
                 actions["show"] = True
@@ -592,14 +590,26 @@ class Noteql(Magics):
             params = None
 
         df = None
+
         df_name = actions.get("df")
+        col_name = actions.get("col")
+        cols_name = actions.get("cols")
+        row_name = actions.get("row")
+        rows_name = actions.get("rows")
+        cell_name = actions.get("cell")
 
         show = "show" in actions
 
-        if show or df_name:
+        if any(show, df_name, col_name, cols_name, row_name, rows_name, cell_name):
             df = session.get_dataframe(sql, params=params)
             if df_name:
                 ns[df_name] = df
+
+            if col_name:
+                ns[df_name] = next(iter(df.to_dict('list').values()))
+
+            if cols_name:
+                ns[df_name] = list(df.to_dict('list').values())
 
             if show:
                 if session.df_viewer:
