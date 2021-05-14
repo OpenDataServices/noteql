@@ -8,6 +8,7 @@ import functools
 import lxml.etree
 import html
 import pandas
+import jinjasql
 import xmltodict
 import pyparsing as pp
 import subprocess
@@ -16,6 +17,7 @@ from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import display, HTML
 from IPython import get_ipython
 from noteql.schema_queries import queries
+from jinja2.utils import Markup
 
 
 LOCAL_DB_MADE = False
@@ -24,8 +26,6 @@ LOCAL_DB_MADE = False
 def get_engine(dburi):
     if not dburi:
         dburi = os.environ.get("NOTEQL_DBURI")
-        if not dburi:
-            dburi = "postgres://noteql:noteql@db/noteql"
     return sqlalchemy.create_engine(dburi)
 
 
@@ -84,9 +84,14 @@ def local_db_session():
     create_local_db()
     return Session("postgresql+psycopg2://root@/postgres", "public")
 
+def safe(value):
+    return Markup(value)
+
+def identity(value):
+    return Markup(f''' "{value.replace('"', '""')}" ''')
 
 class Session:
-    def __init__(self, dburi, schema=None, drop_schema=False, overwrite=False, df_viewer=None, df_viewer_kw=None):
+    def __init__(self, dburi=None, schema=None, drop_schema=False, overwrite=False, df_viewer=None, df_viewer_kw=None):
         self.schema = schema
         self.dburi = dburi
         self.df_viewer = df_viewer
@@ -98,6 +103,14 @@ class Session:
             pass
 
         self.database_type = self.engine.dialect.name
+
+        param_style = 'format'
+        if self.database_type == 'sqlite':
+            param_style = 'qmark'
+
+        self.jinjarender = jinjasql.JinjaSql(param_style=param_style)
+        self.jinjarender.env.filters['s'] = safe
+        self.jinjarender.env.filters['i'] = identity
 
         self.overwrite = overwrite
         if schema:
@@ -459,7 +472,7 @@ class Noteql(Magics):
         arg = (
             pp.Word(pp.alphanums)
             + pp.Suppress("=")
-            + (pp.Word(pp.alphanums) | pp.QuotedString("'", escQuote="'", unquoteResults=False))
+            + (pp.Word(pp.alphanums + '_') | pp.QuotedString("'", escQuote="'"))
         )("arg_params")
 
         create = pp.Keyword("create", caseless=True).suppress() + (
@@ -469,17 +482,17 @@ class Noteql(Magics):
 
         commands = [arg, create, df_arrows]
 
-        for cmd_string in ['df', 'sql', 'params', 'session', 'row', 'rows', 'col', 'cols', 'cell']:
+        for cmd_string in ['df', 'sql', 'session', 'row', 'rows', 'col', 'cols', 'cell', 'record', 'records', 'headings']:
             commands.append(
-               pp.Keyword(cmd_string, caseless=True).suppress() + pp.Word(pp.alphanums + "_")(cmd_string)
+               pp.Keyword(cmd_string, caseless=True).suppress() + pp.Optional(pp.Keyword("as", caseless=True).suppress()) + pp.Word(pp.alphanums + "_")(cmd_string)
             )
 
         title = pp.Keyword("title", caseless=True).suppress() + pp.QuotedString("'", escQuote="'")("title")
-        noformat = (pp.Keyword("noformat", caseless=True) | pp.Keyword("nof", caseless=True))("noformat")
+        nojinja = (pp.Keyword("nojinja", caseless=True) | pp.Keyword("noj", caseless=True))("nojinja")
         show = pp.Keyword("show", caseless=True)("show")
         rest = pp.Word(pp.printables)("rest")
 
-        commands.extend([title, noformat, show, rest])
+        commands.extend([title, nojinja, show, rest])
 
         magic_line_parser = pp.ZeroOrMore(
             pp.Group(pp.MatchFirst(commands)),
@@ -517,8 +530,8 @@ class Noteql(Magics):
         session = self.find_session()
 
         actions = {}
-        params = {}
-        format = True
+        arg_params = {}
+        jinja = True
 
         for item in parsed_line:
 
@@ -538,29 +551,11 @@ class Noteql(Magics):
                 variable.set()
                 session = variable
 
-            if item.getName() == "params":
-                param_name = item[0]
-                variable = ns.get(param_name)
-                if not variable:
-                    print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
-                    return
-                params = variable
-
             if item.getName() == "arg_params":
                 param_name, param_value = item
-                if param_value[0] == "'":
-                    params[param_name] = param_value[1:-1]
-                else:
-                    variable = ns.get(param_value)
-                    if not variable:
-                        print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
-                        return
-                    if params:
-                        print("Error in %%nql, can not use supplied params with the `PARAMS` argument")
-                        return
-                    params[param_name] = variable
+                arg_params[param_name] = param_value
 
-            for command in ['df', 'sql', 'create', 'row', 'rows', 'col', 'cols', 'cell']:
+            for command in ['df', 'sql', 'create', 'row', 'rows', 'col', 'cols', 'cell', 'record', 'records', 'headings']:
                 if item.getName() == command:
                     if command in actions:
                         print(f"Error in %%nql, multiple {command.upper()} statements specified")
@@ -570,24 +565,29 @@ class Noteql(Magics):
             if item.getName() == "show":
                 actions["show"] = True
 
-            if item.getName() == "noformat":
-                format = False
+            if item.getName() == "nojinja":
+                jinja = False
 
             if item.getName() == "title":
                 session.show_title(item[0])
 
-        if format:
-            sql = sql.format(**ns)
+        params = None
+        if jinja:
+            namespace_copy = ns.copy()
+            namespace_copy.update(arg_params)
+            sql, params = session.jinjarender.prepare_query(sql, namespace_copy)
+        if not params:
+            params = None
 
         sql_variable = actions.get("sql")
         if sql_variable:
+            if params:
+                print(f"Error in %%nql, can have params if using SQL command")
+                return
             ns[sql_variable] = sql
 
         if not actions:
             actions["show"] = True
-
-        if not params:
-            params = None
 
         df = None
 
@@ -597,19 +597,40 @@ class Noteql(Magics):
         row_name = actions.get("row")
         rows_name = actions.get("rows")
         cell_name = actions.get("cell")
+        record_name = actions.get("record")
+        records_name = actions.get("records")
+        headings_name = actions.get("headings")
 
         show = "show" in actions
 
-        if any(show, df_name, col_name, cols_name, row_name, rows_name, cell_name):
+        if any([show, df_name, col_name, cols_name, row_name, rows_name, cell_name]):
             df = session.get_dataframe(sql, params=params)
             if df_name:
                 ns[df_name] = df
 
             if col_name:
-                ns[df_name] = next(iter(df.to_dict('list').values()))
+                ns[col_name] = next(iter(df.to_dict('list').values()))
 
             if cols_name:
-                ns[df_name] = list(df.to_dict('list').values())
+                ns[cols_name] = list(df.to_dict('list').values())
+
+            if row_name:
+                ns[row_name] = df.to_dict('split')['data'][0]
+
+            if rows_name:
+                ns[rows_name] = df.to_dict('split')['data']
+
+            if cell_name:
+                ns[cell_name] = next(iter(df.to_dict('list').values()))[0]
+
+            if record_name:
+                ns[record_name] = df.to_dict('records')[0]
+
+            if records_name:
+                ns[records_name] = df.to_dict('records')
+
+            if headings_name:
+                ns[headings_name] = list(df.columns)
 
             if show:
                 if session.df_viewer:
@@ -630,6 +651,8 @@ class Noteql(Magics):
             parsed_line = magic_line_parser.parseString(line)
             parsed_cell = cell_parser.parseString(cell)
 
+            print(parsed_line)
+
             self.execute_part(parsed_line, parsed_cell[0])
 
             for parsed_line, sql in zip(parsed_cell[1::2], parsed_cell[2::2]):
@@ -638,8 +661,12 @@ class Noteql(Magics):
                 self.execute_part(parsed_line[1:], sql)
         else:
             ns = self.shell.user_ns
-            sql = line.format(**ns)
+            namespace_copy = ns.copy()
+            params = None
+            sql, params = session.jinjarender.prepare_query(sql, namespace_copy)
+            if not params:
+                params = None
 
             session = self.find_session()
 
-            return session.get_dataframe(sql)
+            return session.get_dataframe(sql, params=params)

@@ -48,10 +48,10 @@ or
 %nql SELECT * FROM mytable LIMIT 10
 ```
 
-Many options are available on the `%%nql` line for example `DF` to put results in a dataframe.
+Many options are available on the `%%nql` line for example `DF AS` to put results in a dataframe.
 
 ```python
-%%nql DF mydataframe
+%%nql DF AS mydataframe
 
 SELECT * FROM mytable LIMIT 10
 ```
@@ -65,7 +65,7 @@ mydataframe = %nql SELECT * FROM mytable
 The above commands will not show the dataframe you just made. The `SHOW` command can be added so you can save and show in one step.
 
 ```python
-%%nql DF mydataframe SHOW
+%%nql DF AS mydataframe SHOW
 
 SELECT * FROM mytable
 ```
@@ -78,58 +78,6 @@ If you have a writable database and you want to save the results of a query you 
 %%nql CREATE mynewtable
 
 SELECT * FROM mytable
-```
-
-### Parameter passing. 
-
-The simplest is to use python format strings. magics have access to your local variables. This works for both `%%nql` and `%nql`.
-
-```python
-myvariable = 24
-%nql SELECT * FROM mytable WHERE id = '{myvariable}'
-```
-
-This is bad practice when you have untrusted input and will not be ideal if you have strings that need escaping. So there is a `PARAMS` command to pass a parameterized variable to the db. This uses the style of params native to the database driver, the following examples are for postgresql.
-
-In another cell you can define a variable like:
-
-```python
-my_params = [1,2]
-my_named_params = {"name": "value"}
-```
-
-Then parse give them to the command like:
-
-```python
-%%nql PARAMS my_params
-
-SELECT * FROM mytable where id in (%s, %s)
-```
-
-For named params:
-
-```python
-%%nql PARAMS my_named_params
-
-SELECT * FROM mytable where name = %(name)s
-```
-
-For simple named params there is a special syntax on the `%%nql` line so you can add param_name='param_value'.  This only support strings with quotes (using SQL escaping) or local variables without quotes:
-
-```python
-%%nql name='value' 
-
-SELECT * FROM mytable where name = %(name)s
-```
-
-For SQLite the params look like:
-
-```sql
---positional
-SELECT * FROM mytable where name = ?
-
---named
-SELECT * FROM mytable where name = :name
 ```
 
 ### Multiple Statements in one cell
@@ -149,6 +97,122 @@ SELECT * FROM mynewtable LIMIT 10
 
 If you put multiple SHOW commands in one cell then the results will be shown after each other.
 
+### Passing Parameters and Templating. 
+
+When you need to pass varibles to your query you can do it using [jinjasql](https://github.com/sripathikrishnan/jinjasql).  Your local variables are passed as the context to render the SQL statement.  
+
+So if you define some varibales:
+
+```python
+my_name = "david"
+ages = [2,3,4]
+name_field = "name"
+select_statement = "SELECT * FROM people"
+```
+
+You can now use them in your queries:
+
+```python
+%%nql 
+
+SELECT * FROM people WHERE name = {{my_name}}
+```
+
+NOTE: you should not put quotes round your string variiables. Parameters are passed to the database in a safe paramatarised way.
+
+You can use [Jinja syntax](https://jinja.palletsprojects.com/en/3.0.x/templates/) for loops and conditionals:
+
+```python
+%%nql 
+
+SELECT * FROM people WHERE age in 
+( 
+  {% for age in ages %} 
+    {% if not loop.first %}, {% endif%}
+    {{age}}
+  {% endfor}
+)
+```
+This generates an `in` clause using the `ages` list.
+
+There is also a shortcut in jinjasql which is equilent to the above.
+
+```python
+%%nql 
+
+SELECT * FROM people WHERE age in {{ ages | inclause }}
+```
+
+This libarary adds a filter `s` which means you can put raw sql in variables into your query.
+   
+
+```python
+%%nql 
+
+{{ select_statement | s }} WHERE age in {{ ages | inclause }}
+```
+
+Note: you have to be sure your sql is escaped correctly and that there is no untrusted input.
+```
+
+There is also `i` standing for identifier. Use this when putting in field, schema or table names.
+
+```python
+%%nql 
+
+SELECT {{name_field | i}} FROM people
+```
+
+This will put `"` round your table names to make sure they will be understood by the database.
+
+
+### Outputs as python data.
+
+Dataframes are a useful output but sometimes you want access to standard python datatypes, especially if you are going to use them to template for other queries.
+
+There are many commands to get out the data you need, for example `RECORDS AS` returns a list of dictionaries to a file:
+
+```python
+%%nql RECORDS AS all_people
+
+SELECT * FROM people LIMIT 2
+```
+
+Variable `all_people` will now contain something like `[{"name": "david", "age": 56},  {"name": "fred", "age": 46}]`
+
+There is a singular version `RECORD` which would get out just the first result i.e `{"name": "david", "age": 56}`.
+
+You can also assign to multiple variables in one go:
+
+```python
+%%nql RECORDS AS all_people RECORD AS person
+
+SELECT * FROM people LIMIT 2
+```
+
+There are COLS and COL which return list(s) of the columns:
+
+```python
+%%nql COLS all_column COL column
+
+SELECT * FROM people LIMIT 2
+```
+
+`all_column` will contain `[["david", "fred"], [56, 46]]` and `column` will contain just `["david", "fred"]`
+
+There are ROWS and ROW return list(s) of the rows:
+
+```python
+%%nql ROWS AS all_rows ROW AS row
+
+SELECT * FROM people LIMIT 2
+```
+
+`all_rows` will contain `[["david", 56], ["fred", 46]]` and `row` will contain just `["david", 56]`
+
+There is `CELL` which just gets out the first cell.
+
+
 
 ### Save the SQL in a variable
 
@@ -156,37 +220,37 @@ Sometimes you want to write a some sql that would be useful in other queries. Th
 This saves 'SELECT * FROM mytable' in a variable `somesql`.
 
 ```python
-%%nql SQL somesql
+%%nql SQL AS somesql
 SELECT * FROM mytable 
 ```
 
-Then you can substitute it using format strings:
+Then you can substitute it using templating:
 
 ```python
 %%nql
-{somesql} where name='david'
+{{somesql | s}} WHERE name='david'
 ```
 
 This could be done in one cell and is useful if you want to see the results of a query while also using it in another query.
 
 ```python
-%%nql SQL all_names SHOW
-select distinct(name) from mytable
+%%nql SQL AS all_names SHOW
+SELECT distinct(name) FROM mytable
 
 %%nql
-select * from other_table where name in ({all_names})
+SELECT * FROM other_table WHERE name in ({{ all_names | s}})
 ```
 
-This will ouput two tablse ones with the `distinct(names)` and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.
+This will ouput two tables one with the `distinct(names)` and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.
 
 ```python
-%%nql SQL all_names SHOW
-select distinct(name) from mytable
+%%nql SQL AS all_names SHOW
+SELECT distinct(name) FROM mytable
 
 %%nql
-with mytable as ({mytable})
+with mytable as ({{mytable | s}})
 
-select * from other_table join mytable using(name)
+SELECT * FROM other_table join mytable using(name)
 ```
 
 ### Multiple sessions in one notebook
@@ -205,16 +269,15 @@ To use the other session you can either call `use` on the session you want:
 ```python
 session.use()
 ```
-or use the SESSION command:
+or use the `SESSION` command:
 
 ```python 
-%%nql SESSION session
+%%nql SESSION AS session
 
 SELECT * FROM mytable
 ```
 
 ## Using the session directly.
-
 
 ### Tables and Fields
 
