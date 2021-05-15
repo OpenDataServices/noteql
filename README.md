@@ -15,7 +15,7 @@ To install in a notebook:
 
 ## Setup
 
-You will need an [SQLAlchemy URL](https://docs.sqlalchemy.org/en/14/core/engines.html#database-urls) to connect. A session object needs to be made like the following. 
+You will need an [SQLAlchemy URL](https://docs.sqlalchemy.org/en/14/core/engines.html#database-urls) to connect. A session object needs to be made like the following.
 
 ```python
 import noteql
@@ -26,7 +26,7 @@ session = noteql.Session('postgresql://user:password@localhost/dbname')
 # session = noteql.Session('postgresql://user:password@localhost/dbname', 'myschema')
 
 # If you are using colab notebooks this will install postgres in the notebook and provide the session for it.
-# session = noteql.local_db_session() 
+# session = noteql.local_db_session()
 ```
 
 The session object contains methods for programmatic access to the library including some helpers not found in the magic `%%nql` commands.  Also, by making any Session object it will install the magics.
@@ -34,7 +34,7 @@ The session object contains methods for programmatic access to the library inclu
 
 ## Magic Usage
 
-### Pandas Dataframe 
+### Pandas Dataframe
 
 Run the following to display a dataframe. It is recommended to add a limit if selecting from large table.
 
@@ -43,15 +43,15 @@ Run the following to display a dataframe. It is recommended to add a limit if se
 
 SELECT * FROM mytable LIMIT 10
 ```
-or 
+or
 ```python
 %nql SELECT * FROM mytable LIMIT 10
 ```
 
-Many options are available on the `%%nql` line for example `DF AS` to put results in a dataframe.
+Many options are available on the `%%nql` line for example you can assign the output dataframe to a python variable buy the special command `DF`.
 
 ```python
-%%nql DF AS mydataframe
+%%nql mydataframe=DF
 
 SELECT * FROM mytable LIMIT 10
 ```
@@ -65,12 +65,12 @@ mydataframe = %nql SELECT * FROM mytable
 The above commands will not show the dataframe you just made. The `SHOW` command can be added so you can save and show in one step.
 
 ```python
-%%nql DF AS mydataframe SHOW
+%%nql mydataframe=DF SHOW
 
 SELECT * FROM mytable
 ```
 
-### Table Creation 
+### Table Creation
 
 If you have a writable database and you want to save the results of a query you can use the `CREATE` command. This will drop the table first so be warned! This is so that the steps can be repeated without error. This will fail if there are multiple SQL statements in the cell separated by `;`.
 
@@ -88,7 +88,7 @@ This example will create a new table and then preview it in one cell:
 
 ```python
 %%nql CREATE mynewtable
-SELECT * FROM mytable 
+SELECT * FROM mytable
 
 %%nql SHOW
 --show my new table
@@ -97,9 +97,9 @@ SELECT * FROM mynewtable LIMIT 10
 
 If you put multiple SHOW commands in one cell then the results will be shown after each other.
 
-### Passing Parameters and Templating. 
+### Passing Parameters and Templating.
 
-When you need to pass varibles to your query you can do it using [jinjasql](https://github.com/sripathikrishnan/jinjasql).  Your local variables are passed as the context to render the SQL statement.  
+When you need to pass varibles to your query you can do it using [jinjasql](https://github.com/sripathikrishnan/jinjasql).  Your local variables are passed as the context to render the SQL statement.
 
 So if you define some varibales:
 
@@ -113,7 +113,7 @@ select_statement = "SELECT * FROM people"
 You can now use them in your queries:
 
 ```python
-%%nql 
+%%nql
 
 SELECT * FROM people WHERE name = {{my_name}}
 ```
@@ -123,11 +123,11 @@ NOTE: you should not put quotes round your string variiables. Parameters are pas
 You can use [Jinja syntax](https://jinja.palletsprojects.com/en/3.0.x/templates/) for loops and conditionals:
 
 ```python
-%%nql 
+%%nql
 
-SELECT * FROM people WHERE age in 
-( 
-  {% for age in ages %} 
+SELECT * FROM people WHERE age in
+(
+  {% for age in ages %}
     {% if not loop.first %}, {% endif%}
     {{age}}
   {% endfor}
@@ -138,16 +138,16 @@ This generates an `in` clause using the `ages` list.
 There is also a shortcut in jinjasql which is equilent to the above.
 
 ```python
-%%nql 
+%%nql
 
 SELECT * FROM people WHERE age in {{ ages | inclause }}
 ```
 
 This libarary adds a filter `s` which means you can put raw sql in variables into your query.
-   
+
 
 ```python
-%%nql 
+%%nql
 
 {{ select_statement | s }} WHERE age in {{ ages | inclause }}
 ```
@@ -158,7 +158,7 @@ Note: you have to be sure your sql is escaped correctly and that there is no unt
 There is also `i` standing for identifier. Use this when putting in field, schema or table names.
 
 ```python
-%%nql 
+%%nql
 
 SELECT {{name_field | i}} FROM people
 ```
@@ -166,14 +166,14 @@ SELECT {{name_field | i}} FROM people
 This will put `"` round your table names to make sure they will be understood by the database.
 
 
-### Outputs as python data.
+### Assigning outputs to python data.
 
 Dataframes are a useful output but sometimes you want access to standard python datatypes, especially if you are going to use them to template for other queries.
 
-There are many commands to get out the data you need, for example `RECORDS AS` returns a list of dictionaries to a file:
+There are many commands to get out the data you need, for example `var=RECORDS` returns a list of dictionaries to a variable:
 
 ```python
-%%nql RECORDS AS all_people
+%%nql all_people=RECORDS
 
 SELECT * FROM people LIMIT 2
 ```
@@ -185,7 +185,7 @@ There is a singular version `RECORD` which would get out just the first result i
 You can also assign to multiple variables in one go:
 
 ```python
-%%nql RECORDS AS all_people RECORD AS person
+%%nql all_people=RECORDS person=RECORD
 
 SELECT * FROM people LIMIT 2
 ```
@@ -193,7 +193,7 @@ SELECT * FROM people LIMIT 2
 There are COLS and COL which return list(s) of the columns:
 
 ```python
-%%nql COLS all_column COL column
+%%nql all_column=COLS column=COL
 
 SELECT * FROM people LIMIT 2
 ```
@@ -203,25 +203,40 @@ SELECT * FROM people LIMIT 2
 There are ROWS and ROW return list(s) of the rows:
 
 ```python
-%%nql ROWS AS all_rows ROW AS row
+%%nql all_rows=ROWS row=ROW
 
 SELECT * FROM people LIMIT 2
 ```
 
 `all_rows` will contain `[["david", 56], ["fred", 46]]` and `row` will contain just `["david", 56]`
 
-There is `CELL` which just gets out the first cell.
 
+There is `CELL` which just gets out the first cell of the first row.
 
+```python
+%%nql my_name=CELL
+
+SELECT * FROM people LIMIT 2
+```
+
+`my_name` will just be the string `'david'`
+
+HEADINGS gives you th column headings of the output.
+
+```python
+%%nql headings=HEADINGS
+
+SELECT * FROM people LIMIT 2
+```
 
 ### Save the SQL in a variable
 
 Sometimes you want to write a some sql that would be useful in other queries. The SQL command saves the sql as a string in a variable.
-This saves 'SELECT * FROM mytable' in a variable `somesql`.
+This saves 'SELECT * FROM mytable' in a variable `somesql`:
 
 ```python
-%%nql SQL AS somesql
-SELECT * FROM mytable 
+%%nql somesql=SQL
+SELECT * FROM mytable
 ```
 
 Then you can substitute it using templating:
@@ -234,7 +249,7 @@ Then you can substitute it using templating:
 This could be done in one cell and is useful if you want to see the results of a query while also using it in another query.
 
 ```python
-%%nql SQL AS all_names SHOW
+%%nql all_names=SQL SHOW
 SELECT distinct(name) FROM mytable
 
 %%nql
@@ -244,7 +259,7 @@ SELECT * FROM other_table WHERE name in ({{ all_names | s}})
 This will ouput two tables one with the `distinct(names)` and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.
 
 ```python
-%%nql SQL AS all_names SHOW
+%%nql all_names=SQL SHOW
 SELECT distinct(name) FROM mytable
 
 %%nql
@@ -271,8 +286,8 @@ session.use()
 ```
 or use the `SESSION` command:
 
-```python 
-%%nql SESSION AS session
+```python
+%%nql SESSION session
 
 SELECT * FROM mytable
 ```
@@ -283,7 +298,7 @@ SELECT * FROM mytable
 
 The `session.tables` function gives you all the tables in the specified database (or schema) and the `session.fields` gives the fields in a table.
 
-```python 
+```python
 session.tables()
 
 session.fields('mytable')

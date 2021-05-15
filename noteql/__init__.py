@@ -33,7 +33,12 @@ def generate_rows(result, limit):
     for num, row in enumerate(result):
         if num == limit:
             break
-        yield [json.dumps(item, indent=2) if isinstance(item, dict) else html.escape(str(item)) for item in row]
+        yield [
+            json.dumps(item, indent=2)
+            if isinstance(item, dict)
+            else html.escape(str(item))
+            for item in row
+        ]
 
 
 def double_quote(word):
@@ -73,7 +78,9 @@ def create_local_db():
         service postgresql start
         sudo -u postgres psql -c "CREATE USER root WITH SUPERUSER"
     """
-    process = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.run(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     print(process.stderr.decode())
     if process.returncode == 0:
         print("Local DB Made")
@@ -84,14 +91,25 @@ def local_db_session():
     create_local_db()
     return Session("postgresql+psycopg2://root@/postgres", "public")
 
+
 def safe(value):
     return Markup(value)
 
+
 def identity(value):
-    return Markup(f''' "{value.replace('"', '""')}" ''')
+    return Markup(f""" "{value.replace('"', '""')}" """)
+
 
 class Session:
-    def __init__(self, dburi=None, schema=None, drop_schema=False, overwrite=False, df_viewer=None, df_viewer_kw=None):
+    def __init__(
+        self,
+        dburi=None,
+        schema=None,
+        drop_schema=False,
+        overwrite=False,
+        df_viewer=None,
+        df_viewer_kw=None,
+    ):
         self.schema = schema
         self.dburi = dburi
         self.df_viewer = df_viewer
@@ -104,20 +122,24 @@ class Session:
 
         self.database_type = self.engine.dialect.name
 
-        param_style = 'format'
-        if self.database_type == 'sqlite':
-            param_style = 'qmark'
+        param_style = "format"
+        if self.database_type == "sqlite":
+            param_style = "qmark"
 
         self.jinjarender = jinjasql.JinjaSql(param_style=param_style)
-        self.jinjarender.env.filters['s'] = safe
-        self.jinjarender.env.filters['i'] = identity
+        self.jinjarender.env.filters["s"] = safe
+        self.jinjarender.env.filters["i"] = identity
 
         self.overwrite = overwrite
         if schema:
             with self.engine.begin() as connection:
                 if drop_schema:
-                    connection.execute("drop schema if exists {} cascade;".format(self.schema))
-                connection.execute("create schema if not exists {};".format(self.schema))
+                    connection.execute(
+                        "drop schema if exists {} cascade;".format(self.schema)
+                    )
+                connection.execute(
+                    "create schema if not exists {};".format(self.schema)
+                )
 
         ipython = get_ipython()
         ipython.register_magics(Noteql)
@@ -141,7 +163,9 @@ class Session:
         return self.get_dataframe(sql, params=[table])
 
     def set(self):
-        print(f'Using db connection {self.dburi} {"schema:" + self.schema if self.schema else ""}')
+        print(
+            f'Using db connection {self.dburi} {"schema:" + self.schema if self.schema else ""}'
+        )
         self.last_set = datetime.datetime.utcnow()
 
     def get_results(self, sql, limit=-1, params=None):
@@ -256,7 +280,11 @@ class Session:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
             ## remove quotes when looking at actual table.
-            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
+            if (
+                table_exists(connection, table_name[1:-1], schema_name[1:-1])
+                and not overwrite
+                and not append
+            ):
                 print(
                     "WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table"
                 )
@@ -264,7 +292,11 @@ class Session:
             if not append:
                 connection.execute("drop table if exists {}".format(full_name))
 
-            connection.execute('create table if not exists {}(id serial, "{}" jsonb)'.format(full_name, field_name))
+            connection.execute(
+                'create table if not exists {}(id serial, "{}" jsonb)'.format(
+                    full_name, field_name
+                )
+            )
 
             def load(f):
                 if single_cell:
@@ -275,7 +307,11 @@ class Session:
                     print("Total rows loaded 1")
                     return
                 num = -1
-                for num, item in enumerate(ijson.items(f, path_to_list + ("." if path_to_list else "") + "item")):
+                for num, item in enumerate(
+                    ijson.items(
+                        f, path_to_list + ("." if path_to_list else "") + "item"
+                    )
+                ):
                     connection.execute(
                         "insert into {}({}) values (%s)".format(full_name, field_name),
                         json.dumps(item, cls=DecimalEncoder),
@@ -316,7 +352,11 @@ class Session:
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
-            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
+            if (
+                table_exists(connection, table_name[1:-1], schema_name[1:-1])
+                and not overwrite
+                and not append
+            ):
                 print(
                     "WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table"
                 )
@@ -333,7 +373,11 @@ class Session:
                 extra_create += ", {} JSONB".format(json_field)
                 extra_params += ", %s"
 
-            connection.execute('create table if not exists {}("{}" xml {})'.format(full_name, field_name, extra_create))
+            connection.execute(
+                'create table if not exists {}("{}" xml {})'.format(
+                    full_name, field_name, extra_create
+                )
+            )
 
             all_rows = []
             with open(file_name, "rb") as f:
@@ -469,39 +513,63 @@ class DecimalEncoder(json.JSONEncoder):
 @magics_class
 class Noteql(Magics):
     def get_parsers(self):
-        arg = (
-            pp.Word(pp.alphanums)
+        arg_params = (
+            pp.Word(pp.alphanums + "_")
             + pp.Suppress("=")
-            + (pp.Word(pp.alphanums + '_') | pp.QuotedString("'", escQuote="'"))
+            + pp.QuotedString("'", escQuote="'")
         )("arg_params")
 
         create = pp.Keyword("create", caseless=True).suppress() + (
-            pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
+            pp.Word(pp.alphanums + "_")
+            | pp.QuotedString('"', escQuote='"', unquoteResults=False)
         )("create")
         df_arrows = (pp.Word(pp.alphanums + "_") + pp.Keyword("<<").suppress())("df")
 
-        commands = [arg, create, df_arrows]
+        session = (
+            pp.Keyword("session", caseless=True).suppress()
+            + pp.Optional(pp.Keyword("as", caseless=True).suppress())
+            + pp.Word(pp.alphanums + "_")("session")
+        )
 
-        for cmd_string in ['df', 'sql', 'session', 'row', 'rows', 'col', 'cols', 'cell', 'record', 'records', 'headings']:
+        commands = [arg_params, create, df_arrows, session]
+
+        for cmd_string in [
+            "df",
+            "sql",
+            "row",
+            "rows",
+            "col",
+            "cols",
+            "cell",
+            "record",
+            "records",
+            "headings",
+        ]:
             commands.append(
-               pp.Keyword(cmd_string, caseless=True).suppress() + pp.Optional(pp.Keyword("as", caseless=True).suppress()) + pp.Word(pp.alphanums + "_")(cmd_string)
+                pp.Word(pp.alphanums + "_")(cmd_string)
+                + pp.Suppress("=")
+                + pp.Keyword(cmd_string, caseless=True).suppress()
             )
 
-        title = pp.Keyword("title", caseless=True).suppress() + pp.QuotedString("'", escQuote="'")("title")
-        nojinja = (pp.Keyword("nojinja", caseless=True) | pp.Keyword("noj", caseless=True))("nojinja")
+        title = pp.Keyword("title", caseless=True).suppress() + pp.QuotedString(
+            "'", escQuote="'"
+        )("title")
+        nojinja = (
+            pp.Keyword("nojinja", caseless=True) | pp.Keyword("noj", caseless=True)
+        )("nojinja")
         show = pp.Keyword("show", caseless=True)("show")
         rest = pp.Word(pp.printables)("rest")
 
         commands.extend([title, nojinja, show, rest])
 
         magic_line_parser = pp.ZeroOrMore(
-            pp.Group(pp.MatchFirst(commands)),
-            stopOn=pp.LineEnd()
+            pp.Group(pp.MatchFirst(commands)), stopOn=pp.LineEnd()
         )
 
         cell_parser = pp.OneOrMore(
             pp.SkipTo(
-                (pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser)) | pp.StringEnd(),
+                (pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser))
+                | pp.StringEnd(),
                 include=True,
             )
         )
@@ -543,7 +611,9 @@ class Noteql(Magics):
                 param_name = item[0]
                 variable = ns.get(param_name)
                 if not variable:
-                    print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
+                    print(
+                        f"Error in %%nql, variable {param_name} does not exist in your notebook"
+                    )
                     return
                 if not isinstance(variable, Session):
                     print(f"Error in %%nql, variable {param_name} is not a seesion")
@@ -555,10 +625,24 @@ class Noteql(Magics):
                 param_name, param_value = item
                 arg_params[param_name] = param_value
 
-            for command in ['df', 'sql', 'create', 'row', 'rows', 'col', 'cols', 'cell', 'record', 'records', 'headings']:
+            for command in [
+                "df",
+                "sql",
+                "create",
+                "row",
+                "rows",
+                "col",
+                "cols",
+                "cell",
+                "record",
+                "records",
+                "headings",
+            ]:
                 if item.getName() == command:
                     if command in actions:
-                        print(f"Error in %%nql, multiple {command.upper()} statements specified")
+                        print(
+                            f"Error in %%nql, multiple {command.upper()} statements specified"
+                        )
                         return
                     actions[command] = item[0]
 
@@ -609,25 +693,25 @@ class Noteql(Magics):
                 ns[df_name] = df
 
             if col_name:
-                ns[col_name] = next(iter(df.to_dict('list').values()))
+                ns[col_name] = next(iter(df.to_dict("list").values()))
 
             if cols_name:
-                ns[cols_name] = list(df.to_dict('list').values())
+                ns[cols_name] = list(df.to_dict("list").values())
 
             if row_name:
-                ns[row_name] = df.to_dict('split')['data'][0]
+                ns[row_name] = df.to_dict("split")["data"][0]
 
             if rows_name:
-                ns[rows_name] = df.to_dict('split')['data']
+                ns[rows_name] = df.to_dict("split")["data"]
 
             if cell_name:
-                ns[cell_name] = next(iter(df.to_dict('list').values()))[0]
+                ns[cell_name] = next(iter(df.to_dict("list").values()))[0]
 
             if record_name:
-                ns[record_name] = df.to_dict('records')[0]
+                ns[record_name] = df.to_dict("records")[0]
 
             if records_name:
-                ns[records_name] = df.to_dict('records')
+                ns[records_name] = df.to_dict("records")
 
             if headings_name:
                 ns[headings_name] = list(df.columns)
@@ -650,8 +734,6 @@ class Noteql(Magics):
 
             parsed_line = magic_line_parser.parseString(line)
             parsed_cell = cell_parser.parseString(cell)
-
-            print(parsed_line)
 
             self.execute_part(parsed_line, parsed_cell[0])
 
