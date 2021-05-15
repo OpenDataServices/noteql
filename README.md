@@ -5,6 +5,10 @@ Quick and easy way to get analysing data in postgreql/sqlite.
 
 Adds `%%nql` and `%nql` magics.
 
+## QuickStart
+
+See [example notebook](https://github.com/OpenDataServices/noteql/blob/main/Basic%20Example.ipynb)
+
 ## Install
 
 To install in a notebook:
