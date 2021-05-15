@@ -687,7 +687,7 @@ class Noteql(Magics):
 
         show = "show" in actions
 
-        if any([show, df_name, col_name, cols_name, row_name, rows_name, cell_name]):
+        if any([show, df_name, col_name, cols_name, row_name, rows_name, cell_name, record_name, records_name, headings_name]):
             df = session.get_dataframe(sql, params=params)
             if df_name:
                 ns[df_name] = df
