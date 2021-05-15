@@ -153,7 +153,7 @@ This libarary adds a filter `s` which means you can put raw sql in variables int
 ```
 
 Note: you have to be sure your sql is escaped correctly and that there is no untrusted input.
-```
+
 
 There is also `i` standing for identifier. Use this when putting in field, schema or table names.
 
@@ -229,6 +229,9 @@ HEADINGS gives you th column headings of the output.
 SELECT * FROM people LIMIT 2
 ```
 
+The variable headings will now contain `["name", "age"]`
+
+
 ### Save the SQL in a variable
 
 Sometimes you want to write a some sql that would be useful in other queries. The SQL command saves the sql as a string in a variable.
@@ -245,8 +248,9 @@ Then you can substitute it using templating:
 %%nql
 {{somesql | s}} WHERE name='david'
 ```
+The filter `s` is needed to mark the variable as SQL and not just a string. 
 
-This could be done in one cell and is useful if you want to see the results of a query while also using it in another query.
+This could be done by multiple calls to %%nql in one cell and is useful if you want to see the results of a query while also using it in another query.
 
 ```python
 %%nql all_names=SQL SHOW
@@ -256,7 +260,7 @@ SELECT distinct(name) FROM mytable
 SELECT * FROM other_table WHERE name in ({{ all_names | s}})
 ```
 
-This will ouput two tables one with the `distinct(names)` and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.
+This will ouput two tables one with the distinct names and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.
 
 ```python
 %%nql all_names=SQL SHOW
@@ -279,7 +283,7 @@ session2 = noteql.Session('postgresql://user:password@localhost/dbname')
 %nql SELECT 1;
 ```
 
-To use the other session you can either call `use` on the session you want:
+To swap between sessions you can `use` on the session you want:
 
 ```python
 session.use()
