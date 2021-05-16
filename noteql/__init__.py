@@ -768,10 +768,9 @@ class Noteql(Magics):
             ns = self.shell.user_ns
             namespace_copy = ns.copy()
             params = None
-            sql, params = session.jinjarender.prepare_query(sql, namespace_copy)
+            session = self.find_session()
+            sql, params = session.jinjarender.prepare_query(line, namespace_copy)
             if not params:
                 params = None
-
-            session = self.find_session()
 
             return session.get_dataframe(sql, params=params)
