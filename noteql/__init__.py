@@ -6,8 +6,9 @@ import decimal
 import datetime
 import functools
 import lxml.etree
-import html
+import urllib.error
 import pandas
+import requests
 import jinjasql
 import xmltodict
 import pyparsing as pp
@@ -17,6 +18,7 @@ from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import display, HTML
 from IPython import get_ipython
 from noteql.schema_queries import queries
+from urllib.parse import urlencode
 from jinja2.utils import Markup
 
 
@@ -109,22 +111,29 @@ class Session:
         overwrite=False,
         df_viewer=None,
         df_viewer_kw=None,
+        datasette_url=None
     ):
         self.schema = schema
         self.dburi = dburi
         self.df_viewer = df_viewer
         self.df_viewer_kw = df_viewer_kw or {}
 
-        self.engine = get_engine(dburi)
-        ## test connection
-        with self.engine.begin() as connection:
-            pass
+        self.datasette_url = datasette_url
 
-        self.database_type = self.engine.dialect.name
+        if datasette_url:
+            self.database_type = 'datasette'
+        else:
+            self.engine = get_engine(dburi)
+            ## test connection
+            with self.engine.begin() as connection:
+                pass
+            self.database_type = self.engine.dialect.name
 
         param_style = "format"
         if self.database_type == "sqlite":
             param_style = "qmark"
+        if self.database_type == "datasette":
+            param_style = "named"
 
         self.jinjarender = jinjasql.JinjaSql(param_style=param_style)
         self.jinjarender.env.filters["s"] = safe
@@ -164,7 +173,7 @@ class Session:
 
     def set(self):
         print(
-            f'Using db connection {self.dburi} {"schema:" + self.schema if self.schema else ""}'
+            f'Using db connection {self.dburi or self.datasette_url} {"schema:" + self.schema if self.schema else ""}'
         )
         self.last_set = datetime.datetime.utcnow()
 
@@ -217,6 +226,20 @@ class Session:
         parse_dates=None,
         chunksize=None,
     ):
+        if self.datasette_url:
+            url_params = {
+                "_shape": "array",
+                "sql": sql
+            }
+            if params:
+                url_params.update(params)
+
+            try:
+                return pandas.read_json(f'{self.datasette_url}?{urlencode(url_params)}')
+            except urllib.error.HTTPError as e:
+                print('Reponse error:', e.fp.read().decode())
+                raise
+
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
