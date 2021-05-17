@@ -150,8 +150,8 @@ class Session:
                     "create schema if not exists {};".format(self.schema)
                 )
 
-        ipython = get_ipython()
-        ipython.register_magics(Noteql)
+        self.ipython = get_ipython()
+        self.ipython.register_magics(Noteql)
         self.set()
 
     def tables(self):
@@ -749,26 +749,31 @@ class Noteql(Magics):
         if create_name:
             session.create_table(create_name, sql, params)
 
+        return df
+
     @line_cell_magic
     def nql(self, line, cell=None):
 
         if cell:
+            dfs = []
             magic_line_parser, cell_parser = self.get_parsers()
 
             parsed_line = magic_line_parser.parseString(line)
             parsed_cell = cell_parser.parseString(cell)
 
-            self.execute_part(parsed_line, parsed_cell[0])
+            dfs.append(self.execute_part(parsed_line, parsed_cell[0]))
 
             for parsed_line, sql in zip(parsed_cell[1::2], parsed_cell[2::2]):
                 if not sql.strip():
                     print(f"Error in %%nql, empty sql statement")
-                self.execute_part(parsed_line[1:], sql)
+                dfs.append(self.execute_part(parsed_line[1:], sql))
+            return dfs
         else:
             ns = self.shell.user_ns
             namespace_copy = ns.copy()
             params = None
             session = self.find_session()
+            line = line.replace('{', '{{').replace('}', '}}')
             sql, params = session.jinjarender.prepare_query(line, namespace_copy)
             if not params:
                 params = None
