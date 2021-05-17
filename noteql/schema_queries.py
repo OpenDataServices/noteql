@@ -5,7 +5,7 @@ queries = {
           c.relname as "Name",
           CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'partitioned table' WHEN 'I' THEN 'partitioned index' END as "Type",
           pg_catalog.pg_size_pretty(pg_catalog.pg_table_size(c.oid)) as "Size",
-          fields.fields 
+          fields.fields
         FROM pg_catalog.pg_class c
         JOIN
             (SELECT a.attrelid, string_agg(a.attname::text, ', ') fields
@@ -22,31 +22,31 @@ queries = {
         ORDER BY 1,2;
      """,
         "field": """
-            WITH getoid as ( 
-            SELECT c.oid 
-            FROM pg_catalog.pg_class c 
-             
-            LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace 
-             
-            WHERE c.relname = %s  
-              AND pg_catalog.pg_table_is_visible(c.oid) 
-            ) 
-             
-            SELECT a.attname "Field", 
-              pg_catalog.format_type(a.atttypid, a.atttypmod) "Type", 
-              pg_catalog.col_description(a.attrelid, a.attnum) "Description" 
-            FROM pg_catalog.pg_attribute a 
-            WHERE a.attrelid in (select oid from getoid) AND a.attnum > 0 AND NOT a.attisdropped 
-            ORDER BY a.attnum; 
+            WITH getoid as (
+            SELECT c.oid
+            FROM pg_catalog.pg_class c
+
+            LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+
+            WHERE c.relname = %s
+              AND pg_catalog.pg_table_is_visible(c.oid)
+            )
+
+            SELECT a.attname "Field",
+              pg_catalog.format_type(a.atttypid, a.atttypmod) "Type",
+              pg_catalog.col_description(a.attrelid, a.attnum) "Description"
+            FROM pg_catalog.pg_attribute a
+            WHERE a.attrelid in (select oid from getoid) AND a.attnum > 0 AND NOT a.attisdropped
+            ORDER BY a.attnum;
       """,
     },
     "sqlite": {
         "table": """
-        SELECT 
+        SELECT
             name, sql
-        FROM 
-            sqlite_master 
-        WHERE 
+        FROM
+            sqlite_master
+        WHERE
             name NOT LIKE 'sqlite_%';
         """,
         "field": """
