@@ -74,7 +74,7 @@ The above commands will not show the dataframe you just made. The `SHOW` command
 SELECT * FROM mytable
 ```
 
-### Table Creation
+### Table/View Creation
 
 If you have a writable database and you want to save the results of a query you can use the `CREATE` command. This will drop the table first so be warned! This is so that the steps can be repeated without error. This will fail if there are multiple SQL statements in the cell separated by `;`.
 
@@ -83,6 +83,15 @@ If you have a writable database and you want to save the results of a query you 
 
 SELECT * FROM mytable
 ```
+
+If you do not want a permentent table just a database view you can do:
+
+```python
+%%nql CREATE mynewview
+
+SELECT * FROM mytable
+```
+
 
 ### Multiple Statements in one cell
 
@@ -261,7 +270,7 @@ This could be done by multiple calls to %%nql in one cell and is useful if you w
 SELECT distinct(name) FROM mytable
 
 %%nql
-SELECT * FROM other_table WHERE name in ({{ all_names | s}})
+SELECT * FROM other_table WHERE name in ({{ all_names | s }})
 ```
 
 This will ouput two tables one with the distinct names and the other with the results of the second query.  This is also useful for seeing the output of WITH (CTE) at the same time as results.

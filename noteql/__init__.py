@@ -92,6 +92,11 @@ def identity(value):
     return Markup(f""" "{value.replace('"', '""')}" """)
 
 
+def fields(values):
+    fields = ",".join(f""" "{value.replace('"', '""')}" """ for value in values)
+    return Markup(f"{fields}")
+
+
 class Session:
     def __init__(
         self,
@@ -102,6 +107,7 @@ class Session:
         df_viewer=None,
         df_viewer_kw=None,
         datasette_url=None,
+        cell_magic_output=False
     ):
         self.schema = schema
         self.dburi = dburi
@@ -109,6 +115,7 @@ class Session:
         self.df_viewer_kw = df_viewer_kw or {}
 
         self.datasette_url = datasette_url
+        self.cell_magic_output = cell_magic_output
 
         if datasette_url:
             self.database_type = "datasette"
@@ -127,7 +134,10 @@ class Session:
 
         self.jinjarender = jinjasql.JinjaSql(param_style=param_style)
         self.jinjarender.env.filters["s"] = safe
+        self.jinjarender.env.filters["sql"] = safe
         self.jinjarender.env.filters["i"] = identity
+        self.jinjarender.env.filters["ident"] = identity
+        self.jinjarender.env.filters["fields"] = fields
 
         self.overwrite = overwrite
         if schema:
@@ -186,20 +196,26 @@ class Session:
             return results
 
     def create_table(self, table, sql, params=None):
+        return self.create_relation(table, sql, 'TABLE', params)
+
+    def create_view(self, view, sql, params=None):
+        return self.create_relation(view, sql, 'VIEW', params)
+
+    def create_relation(self, relation, sql, type, params=None):
         self.run_sql(
             """
-            DROP TABLE IF EXISTS {table};
+            DROP {type} IF EXISTS {relation};
         """.format(
-                table=table
+                relation=relation, type=type
             )
         )
 
         sql = """
-            CREATE TABLE {table}
+            CREATE {type} {relation}
             AS
             {sql}
         """.format(
-            table=table, sql=sql
+            relation=relation, sql=sql, type=type
         )
         return self.run_sql(sql, params=params)
 
@@ -508,6 +524,9 @@ class Noteql(Magics):
         create = pp.Keyword("create", caseless=True).suppress() + (
             pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
         )("create")
+        view = pp.Keyword("view", caseless=True).suppress() + (
+            pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
+        )("view")
         df_arrows = (pp.Word(pp.alphanums + "_") + pp.Keyword("<<").suppress())("df")
 
         session = (
@@ -516,7 +535,7 @@ class Noteql(Magics):
             + pp.Word(pp.alphanums + "_")("session")
         )
 
-        commands = [arg_params, create, df_arrows, session]
+        commands = [arg_params, create, view, df_arrows, session]
 
         for cmd_string in [
             "df",
@@ -605,6 +624,7 @@ class Noteql(Magics):
                 "df",
                 "sql",
                 "create",
+                "view",
                 "row",
                 "rows",
                 "col",
@@ -713,11 +733,17 @@ class Noteql(Magics):
         if create_name:
             session.create_table(create_name, sql, params)
 
+        view_name = actions.get("view")
+
+        if view_name:
+            session.create_view(view_name, sql, params)
+
         return df
 
     @line_cell_magic
     def nql(self, line, cell=None):
 
+        session = self.find_session()
         if cell:
             dfs = []
             magic_line_parser, cell_parser = self.get_parsers()
@@ -731,12 +757,12 @@ class Noteql(Magics):
                 if not sql.strip():
                     print("Error in %%nql, empty sql statement")
                 dfs.append(self.execute_part(parsed_line[1:], sql))
-            return dfs
+            if session.cell_magic_output:
+                return dfs
         else:
             ns = self.shell.user_ns
             namespace_copy = ns.copy()
             params = None
-            session = self.find_session()
             line = line.replace("{", "{{").replace("}", "}}")
             sql, params = session.jinjarender.prepare_query(line, namespace_copy)
             if not params:

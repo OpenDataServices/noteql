@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 ip = get_ipython()
-ip.user_ns["session2"] = noteql.Session(dburi="sqlite://")
-ip.user_ns["session"] = noteql.Session(dburi="sqlite://")
+ip.user_ns["session2"] = noteql.Session(dburi="sqlite://", cell_magic_output=True)
+ip.user_ns["session"] = noteql.Session(dburi="sqlite://", cell_magic_output=True)
 
-SIMPLE_QUERY = "SELECT * FROM test where length(atitle) > 1"
+SIMPLE_QUERY = "SELECT * FROM test WHERE length(atitle) > 1"
 
 
 def create_test_table():
@@ -29,6 +29,16 @@ def test_create():
     assert create_test_table() == [None]
 
     dfs = ip.run_cell_magic("nql", "", SIMPLE_QUERY)
+    assert dfs[0].to_dict("list") == {"atitle": ["aa", "aaa"], "btitle": ["bb", "bbb"]}
+
+
+def test_view():
+    create_test_table()
+
+    dfs = ip.run_cell_magic("nql", "VIEW test_view", SIMPLE_QUERY)
+    assert dfs == [None]
+
+    dfs = ip.run_cell_magic("nql", "", "SELECT * FROM test_view")
     assert dfs[0].to_dict("list") == {"atitle": ["aa", "aaa"], "btitle": ["bb", "bbb"]}
 
 
@@ -82,6 +92,8 @@ def test_basic_params():
 
     ip.user_ns["my_variable"] = "aa"
     ip.user_ns["my_variables"] = ["aa", "aaa"]
+    ip.user_ns["my_fields"] = ["atitle", "btitle"]
+    ip.user_ns["my_field"] = ["atitle"]
 
     dfs = ip.run_cell_magic("nql", "", SIMPLE_QUERY + " and atitle={{my_variable}}")
 
@@ -98,6 +110,14 @@ def test_basic_params():
     df = ip.run_line_magic("nql", SIMPLE_QUERY + " and atitle in {{my_variables | inclause}}")
 
     assert df.to_dict("list") == {"atitle": ["aa", "aaa"], "btitle": ["bb", "bbb"]}
+
+    df = ip.run_line_magic("nql", "SELECT {{my_fields | fields}} FROM test WHERE length(atitle) > 1")
+
+    assert df.to_dict("list") == {"atitle": ["aa", "aaa"], "btitle": ["bb", "bbb"]}
+
+    df = ip.run_line_magic("nql", "SELECT {{my_field | fields}} FROM test WHERE length(atitle) > 1")
+
+    assert df.to_dict("list") == {"atitle": ["aa", "aaa"]}
 
 
 def test_multi_sql():
