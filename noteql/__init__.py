@@ -531,11 +531,15 @@ class Noteql(Magics):
 
         session = (
             pp.Keyword("session", caseless=True).suppress()
-            + pp.Optional(pp.Keyword("as", caseless=True).suppress())
             + pp.Word(pp.alphanums + "_")("session")
         )
 
-        commands = [arg_params, create, view, df_arrows, session]
+        csv = (
+            pp.Keyword("csv", caseless=True).suppress()
+            + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))
+        )('csv')
+
+        commands = [arg_params, create, view, df_arrows, session, csv]
 
         for cmd_string in [
             "df",
@@ -622,6 +626,7 @@ class Noteql(Magics):
 
             for command in [
                 "df",
+                "csv",
                 "sql",
                 "create",
                 "view",
@@ -670,6 +675,7 @@ class Noteql(Magics):
         df = None
 
         df_name = actions.get("df")
+        csv_file = actions.get("csv")
         col_name = actions.get("col")
         cols_name = actions.get("cols")
         row_name = actions.get("row")
@@ -684,6 +690,7 @@ class Noteql(Magics):
         if any(
             [
                 show,
+                csv_file,
                 df_name,
                 col_name,
                 cols_name,
@@ -723,6 +730,9 @@ class Noteql(Magics):
             if headings_name:
                 ns[headings_name] = list(df.columns)
 
+            if csv_file:
+                df.to_csv(csv_file, index=False)
+
             if show:
                 if session.df_viewer:
                     df = session.df_viewer(df, **session.df_viewer_kw)
@@ -750,6 +760,7 @@ class Noteql(Magics):
 
             parsed_line = magic_line_parser.parseString(line)
             parsed_cell = cell_parser.parseString(cell)
+            print(parsed_line)
 
             dfs.append(self.execute_part(parsed_line, parsed_cell[0]))
 

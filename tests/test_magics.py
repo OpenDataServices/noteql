@@ -1,6 +1,8 @@
 from IPython.testing.globalipapp import get_ipython
 import noteql
 import pytest
+import tempfile
+import csv
 from sqlalchemy.exc import OperationalError
 
 ip = get_ipython()
@@ -156,3 +158,26 @@ def test_multisession():
 
     dfs = ip.run_cell_magic("nql", "SESSION session", SIMPLE_QUERY)
     assert dfs[0].to_dict("list") == {"atitle": ["aa", "aaa"], "btitle": ["bb", "bbb"]}
+
+
+def test_csv():
+    create_test_table()
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        out_csv = f"{tmpdirname}/out.csv"
+        ip.run_cell_magic("nql", f"CSV {out_csv}", SIMPLE_QUERY)
+        with open(out_csv) as f:
+            reader = csv.reader(f)
+            assert list(reader) == [["atitle", "btitle"], ["aa", "bb"], ["aaa", "bbb"]]
+
+        out_csv = f"{tmpdirname}/o ut.csv"
+        ip.run_cell_magic("nql", f"CSV '{out_csv}'", SIMPLE_QUERY)
+        with open(out_csv) as f:
+            reader = csv.reader(f)
+            assert list(reader) == [["atitle", "btitle"], ["aa", "bb"], ["aaa", "bbb"]]
+
+        out_csv = f"{tmpdirname}/ou&^%&^&&&^%&.csv"
+        ip.run_cell_magic("nql", f"CSV {out_csv}", SIMPLE_QUERY)
+        with open(out_csv) as f:
+            reader = csv.reader(f)
+            assert list(reader) == [["atitle", "btitle"], ["aa", "bb"], ["aaa", "bbb"]]
