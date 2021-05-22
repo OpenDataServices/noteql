@@ -24,5 +24,6 @@ setup(
         "requests",
         "jinjasql",
         "pandas",
+        "openpyxl",
     ],
 )

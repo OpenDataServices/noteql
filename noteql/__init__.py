@@ -12,6 +12,9 @@ import jinjasql
 import xmltodict
 import pyparsing as pp
 import subprocess
+import openpyxl
+from openpyxl.utils.dataframe import dataframe_to_rows
+
 from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import display, HTML
 from IPython import get_ipython
@@ -539,7 +542,12 @@ class Noteql(Magics):
             + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))
         )('csv')
 
-        commands = [arg_params, create, view, df_arrows, session, csv]
+        excel = (
+            pp.Keyword("excel", caseless=True).suppress()
+            + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))
+        )('excel')
+
+        commands = [arg_params, create, view, df_arrows, session, csv, excel]
 
         for cmd_string in [
             "df",
@@ -559,7 +567,7 @@ class Noteql(Magics):
                 + pp.Keyword(cmd_string, caseless=True).suppress()
             )
 
-        title = pp.Keyword("title", caseless=True).suppress() + pp.QuotedString("'", escQuote="'")("title")
+        title = pp.Keyword("title", caseless=True).suppress() + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))("title")
         nojinja = (pp.Keyword("nojinja", caseless=True) | pp.Keyword("noj", caseless=True))("nojinja")
         show = pp.Keyword("show", caseless=True)("show")
         rest = pp.Word(pp.printables)("rest")
@@ -601,6 +609,7 @@ class Noteql(Magics):
         actions = {}
         arg_params = {}
         jinja = True
+        title = None
 
         for item in parsed_line:
 
@@ -627,6 +636,7 @@ class Noteql(Magics):
             for command in [
                 "df",
                 "csv",
+                "excel",
                 "sql",
                 "create",
                 "view",
@@ -652,7 +662,8 @@ class Noteql(Magics):
                 jinja = False
 
             if item.getName() == "title":
-                session.show_title(item[0])
+                title = item[0]
+                session.show_title(title)
 
         params = None
         if jinja:
@@ -676,6 +687,7 @@ class Noteql(Magics):
 
         df_name = actions.get("df")
         csv_file = actions.get("csv")
+        excel_file = actions.get("excel")
         col_name = actions.get("col")
         cols_name = actions.get("cols")
         row_name = actions.get("row")
@@ -691,6 +703,7 @@ class Noteql(Magics):
             [
                 show,
                 csv_file,
+                excel_file,
                 df_name,
                 col_name,
                 cols_name,
@@ -733,6 +746,26 @@ class Noteql(Magics):
             if csv_file:
                 df.to_csv(csv_file, index=False)
 
+            if excel_file:
+                if title:
+                    ws_title = title
+                else:
+                    ws_title = 'Sheet'
+
+                if os.path.exists(excel_file):
+                    wb = openpyxl.load_workbook(filename=excel_file)
+                    if ws_title in wb.sheetnames:
+                        raise Exception(f"%%nql error, sheet name {ws_title} already exists. Use a new sheet name by adding `TITLE 'My Sheet Name'`.")
+                    ws = wb.create_sheet(ws_title)
+                else:
+                    wb = openpyxl.Workbook()
+                    ws = wb.active
+                    ws.title = ws_title
+
+                for r in dataframe_to_rows(df, header=True, index=False):
+                    ws.append(r)
+                wb.save(excel_file)
+
             if show:
                 if session.df_viewer:
                     df = session.df_viewer(df, **session.df_viewer_kw)
@@ -760,7 +793,6 @@ class Noteql(Magics):
 
             parsed_line = magic_line_parser.parseString(line)
             parsed_cell = cell_parser.parseString(cell)
-            print(parsed_line)
 
             dfs.append(self.execute_part(parsed_line, parsed_cell[0]))
 

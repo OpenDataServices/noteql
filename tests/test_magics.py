@@ -3,6 +3,7 @@ import noteql
 import pytest
 import tempfile
 import csv
+from openpyxl import load_workbook
 from sqlalchemy.exc import OperationalError
 
 ip = get_ipython()
@@ -181,3 +182,23 @@ def test_csv():
         with open(out_csv) as f:
             reader = csv.reader(f)
             assert list(reader) == [["atitle", "btitle"], ["aa", "bb"], ["aaa", "bbb"]]
+
+
+def test_xlsx():
+    create_test_table()
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        out_xlsx = f"{tmpdirname}/out.xlsx"
+        ip.run_cell_magic("nql", f"EXCEL {out_xlsx}", SIMPLE_QUERY)
+
+        wb = load_workbook(filename=out_xlsx)
+        assert wb.sheetnames == ['Sheet']
+        assert list(wb["Sheet"].values) == [("atitle", "btitle"), ("aa", "bb"), ("aaa", "bbb")]
+
+        ip.run_cell_magic("nql", f"EXCEL {out_xlsx} TITLE moo", SIMPLE_QUERY)
+
+        wb = load_workbook(filename=out_xlsx)
+        assert wb.sheetnames == ['Sheet', 'moo']
+        assert list(wb['moo'].values) == [("atitle", "btitle"), ("aa", "bb"), ("aaa", "bbb")]
+
+        pytest.raises(Exception, ip.run_cell_magic, "nql", f"EXCEL {out_xlsx} TITLE moo", SIMPLE_QUERY)
