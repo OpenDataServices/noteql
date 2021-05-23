@@ -7,6 +7,7 @@ import datetime
 import lxml.etree
 import urllib.error
 import html
+import sqlfluff
 import pandas
 import jinjasql
 import xmltodict
@@ -107,6 +108,7 @@ class Session:
         schema=None,
         drop_schema=False,
         overwrite=False,
+        lint=False,
         df_viewer=None,
         df_viewer_kw=None,
         datasette_url=None,
@@ -141,6 +143,8 @@ class Session:
         self.jinjarender.env.filters["i"] = identity
         self.jinjarender.env.filters["ident"] = identity
         self.jinjarender.env.filters["fields"] = fields
+
+        self.lint = lint
 
         self.overwrite = overwrite
         if schema:
@@ -665,6 +669,14 @@ class Noteql(Magics):
                 title = item[0]
                 session.show_title(title)
 
+        if session.lint:
+            try:
+                fixed = sqlfluff.fix(sql.strip())
+                if fixed.strip() != sql.strip():
+                    print(f'SQL did not pass linting, use the following SQL: ```\n{fixed}```')
+            except Exception as e:
+                print(f'Warning: SQL could not be linted: {e}')
+
         params = None
         if jinja:
             namespace_copy = ns.copy()
@@ -765,6 +777,7 @@ class Noteql(Magics):
                 for r in dataframe_to_rows(df, header=True, index=False):
                     ws.append(r)
                 wb.save(excel_file)
+
 
             if show:
                 if session.df_viewer:
