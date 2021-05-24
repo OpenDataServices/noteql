@@ -25,6 +25,8 @@ from jinja2.utils import Markup
 
 LOCAL_DB_MADE = False
 
+REGISTERED_MAGICS = False
+
 
 def get_engine(dburi):
     if not dburi:
@@ -110,7 +112,8 @@ class Session:
         df_viewer=None,
         df_viewer_kw=None,
         datasette_url=None,
-        cell_magic_output=False
+        cell_magic_name=None,
+        cell_magic_output=False,
     ):
         self.schema = schema
         self.dburi = dburi
@@ -150,7 +153,17 @@ class Session:
                 connection.execute("create schema if not exists {};".format(self.schema))
 
         self.ipython = get_ipython()
-        self.ipython.register_magics(Noteql)
+
+        global REGISTERED_MAGICS
+
+        if not REGISTERED_MAGICS:
+            if cell_magic_name:
+                Noteql.magics["line"][cell_magic_name] = Noteql.magics["line"].pop("nql")
+                Noteql.magics["cell"][cell_magic_name] = Noteql.magics["cell"].pop("nql")
+
+            self.ipython.register_magics(Noteql)
+            REGISTERED_MAGICS = True
+
         self.set()
 
     def tables(self):
