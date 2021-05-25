@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 from sqlalchemy.exc import OperationalError
 
 ip = get_ipython()
+ip.user_ns["session_timer"] = noteql.Session(dburi="sqlite://", cell_magic_output=True, timer=True)
 ip.user_ns["session2"] = noteql.Session(dburi="sqlite://", cell_magic_output=True)
 ip.user_ns["session"] = noteql.Session(dburi="sqlite://", cell_magic_output=True)
 
@@ -202,3 +203,33 @@ def test_xlsx():
         assert list(wb['moo'].values) == [("atitle", "btitle"), ("aa", "bb"), ("aaa", "bbb")]
 
         pytest.raises(Exception, ip.run_cell_magic, "nql", f"EXCEL {out_xlsx} TITLE moo", SIMPLE_QUERY)
+
+
+def test_timer(capsys):
+
+    create_test_table()
+    ip.run_cell_magic("nql", "TIMER", SIMPLE_QUERY)
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Query took")
+
+    ip.run_cell_magic("nql", "", SIMPLE_QUERY)
+    captured = capsys.readouterr()
+    assert not captured.out.startswith("Query took")
+
+    ip.user_ns["session_timer"].set()
+    create_test_table()
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Using")
+
+    ip.run_cell_magic("nql", "", SIMPLE_QUERY)
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Query took")
+
+    ip.user_ns["session"].set()
+    captured = capsys.readouterr()
+    assert captured.out.startswith("Using")
+
+    ip.run_cell_magic("nql", "SESSION session", SIMPLE_QUERY)
+    captured = capsys.readouterr()
+    assert not captured.out.startswith("Query took")
