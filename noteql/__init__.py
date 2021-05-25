@@ -8,6 +8,7 @@ import lxml.etree
 import urllib.error
 import html
 import pandas
+import time
 import jinjasql
 import xmltodict
 import pyparsing as pp
@@ -36,7 +37,12 @@ def generate_rows(result, limit):
     for num, row in enumerate(result):
         if num == limit:
             break
-        yield [json.dumps(item, indent=2) if isinstance(item, dict) else html.escape(str(item)) for item in row]
+        yield [
+            json.dumps(item, indent=2)
+            if isinstance(item, dict)
+            else html.escape(str(item))
+            for item in row
+        ]
 
 
 def double_quote(word):
@@ -75,7 +81,9 @@ def create_local_db():
         service postgresql start
         sudo -u postgres psql -c "CREATE USER root WITH SUPERUSER"
     """
-    process = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.run(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     print(process.stderr.decode())
     if process.returncode == 0:
         print("Local DB Made")
@@ -110,7 +118,8 @@ class Session:
         df_viewer=None,
         df_viewer_kw=None,
         datasette_url=None,
-        cell_magic_output=False
+        cell_magic_output=False,
+        timer=False,
     ):
         self.schema = schema
         self.dburi = dburi
@@ -119,6 +128,8 @@ class Session:
 
         self.datasette_url = datasette_url
         self.cell_magic_output = cell_magic_output
+
+        self.timer = timer
 
         if datasette_url:
             self.database_type = "datasette"
@@ -146,8 +157,12 @@ class Session:
         if schema:
             with self.engine.begin() as connection:
                 if drop_schema:
-                    connection.execute("drop schema if exists {} cascade;".format(self.schema))
-                connection.execute("create schema if not exists {};".format(self.schema))
+                    connection.execute(
+                        "drop schema if exists {} cascade;".format(self.schema)
+                    )
+                connection.execute(
+                    "create schema if not exists {};".format(self.schema)
+                )
 
         self.ipython = get_ipython()
         self.ipython.register_magics(Noteql)
@@ -199,10 +214,10 @@ class Session:
             return results
 
     def create_table(self, table, sql, params=None):
-        return self.create_relation(table, sql, 'TABLE', params)
+        return self.create_relation(table, sql, "TABLE", params)
 
     def create_view(self, view, sql, params=None):
-        return self.create_relation(view, sql, 'VIEW', params)
+        return self.create_relation(view, sql, "VIEW", params)
 
     def create_relation(self, relation, sql, type, params=None):
         self.run_sql(
@@ -230,7 +245,9 @@ class Session:
         params=None,
         parse_dates=None,
         chunksize=None,
+        timer=False,
     ):
+        start = time.perf_counter()
         if self.datasette_url:
             url_params = {"_shape": "array", "sql": sql}
             if params:
@@ -241,11 +258,15 @@ class Session:
             except urllib.error.HTTPError as e:
                 print("Reponse error:", e.fp.read().decode())
                 raise
+            finally:
+                if self.timer or timer:
+                    end = time.perf_counter()
+                    print(f"Query took {end - start:0.4f} seconds")
 
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
-            return pandas.read_sql_query(
+            df = pandas.read_sql_query(
                 sql,
                 connection,
                 index_col=None,
@@ -254,6 +275,10 @@ class Session:
                 parse_dates=parse_dates,
                 chunksize=chunksize,
             )
+            if self.timer or timer:
+                end = time.perf_counter()
+                print(f"Query took {start - end:0.4f} seconds")
+            return df
 
     def show_dataframe(self, sql, title=None, title_size="h3", **kwargs):
         if title:
@@ -305,7 +330,11 @@ class Session:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
             # remove quotes when looking at actual table.
-            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
+            if (
+                table_exists(connection, table_name[1:-1], schema_name[1:-1])
+                and not overwrite
+                and not append
+            ):
                 print(
                     "WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table"
                 )
@@ -313,7 +342,11 @@ class Session:
             if not append:
                 connection.execute("drop table if exists {}".format(full_name))
 
-            connection.execute('create table if not exists {}(id serial, "{}" jsonb)'.format(full_name, field_name))
+            connection.execute(
+                'create table if not exists {}(id serial, "{}" jsonb)'.format(
+                    full_name, field_name
+                )
+            )
 
             def load(f):
                 if single_cell:
@@ -324,7 +357,11 @@ class Session:
                     print("Total rows loaded 1")
                     return
                 num = -1
-                for num, item in enumerate(ijson.items(f, path_to_list + ("." if path_to_list else "") + "item")):
+                for num, item in enumerate(
+                    ijson.items(
+                        f, path_to_list + ("." if path_to_list else "") + "item"
+                    )
+                ):
                     connection.execute(
                         "insert into {}({}) values (%s)".format(full_name, field_name),
                         json.dumps(item, cls=DecimalEncoder),
@@ -365,7 +402,11 @@ class Session:
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
-            if table_exists(connection, table_name[1:-1], schema_name[1:-1]) and not overwrite and not append:
+            if (
+                table_exists(connection, table_name[1:-1], schema_name[1:-1])
+                and not overwrite
+                and not append
+            ):
                 print(
                     "WARNING: Table already exists not loading. Set overwrite=True to drop table first or append=True if you want to add rows to existing table"
                 )
@@ -383,7 +424,9 @@ class Session:
                 extra_params += ", %s"
 
             connection.execute(
-                'create table if not exists {}("{}" xml {})'.format(full_name, field_name, extra_create)
+                'create table if not exists {}("{}" xml {})'.format(
+                    full_name, field_name, extra_create
+                )
             )
 
             all_rows = []
@@ -520,32 +563,35 @@ class DecimalEncoder(json.JSONEncoder):
 @magics_class
 class Noteql(Magics):
     def get_parsers(self):
-        arg_params = (pp.Word(pp.alphanums + "_") + pp.Suppress("=") + pp.QuotedString("'", escQuote="'"))(
-            "arg_params"
-        )
+        arg_params = (
+            pp.Word(pp.alphanums + "_")
+            + pp.Suppress("=")
+            + pp.QuotedString("'", escQuote="'")
+        )("arg_params")
 
         create = pp.Keyword("create", caseless=True).suppress() + (
-            pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
+            pp.Word(pp.alphanums + "_")
+            | pp.QuotedString('"', escQuote='"', unquoteResults=False)
         )("create")
         view = pp.Keyword("view", caseless=True).suppress() + (
-            pp.Word(pp.alphanums + "_") | pp.QuotedString('"', escQuote='"', unquoteResults=False)
+            pp.Word(pp.alphanums + "_")
+            | pp.QuotedString('"', escQuote='"', unquoteResults=False)
         )("view")
         df_arrows = (pp.Word(pp.alphanums + "_") + pp.Keyword("<<").suppress())("df")
 
-        session = (
-            pp.Keyword("session", caseless=True).suppress()
-            + pp.Word(pp.alphanums + "_")("session")
-        )
+        session = pp.Keyword("session", caseless=True).suppress() + pp.Word(
+            pp.alphanums + "_"
+        )("session")
 
         csv = (
             pp.Keyword("csv", caseless=True).suppress()
             + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))
-        )('csv')
+        )("csv")
 
         excel = (
             pp.Keyword("excel", caseless=True).suppress()
             + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))
-        )('excel')
+        )("excel")
 
         commands = [arg_params, create, view, df_arrows, session, csv, excel]
 
@@ -567,18 +613,26 @@ class Noteql(Magics):
                 + pp.Keyword(cmd_string, caseless=True).suppress()
             )
 
-        title = pp.Keyword("title", caseless=True).suppress() + (pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables))("title")
-        nojinja = (pp.Keyword("nojinja", caseless=True) | pp.Keyword("noj", caseless=True))("nojinja")
+        title = pp.Keyword("title", caseless=True).suppress() + (
+            pp.QuotedString("'", escQuote="'") | pp.Word(pp.printables)
+        )("title")
+        nojinja = (
+            pp.Keyword("nojinja", caseless=True) | pp.Keyword("noj", caseless=True)
+        )("nojinja")
         show = pp.Keyword("show", caseless=True)("show")
+        timer = pp.Keyword("timer", caseless=True)("timer")
         rest = pp.Word(pp.printables)("rest")
 
-        commands.extend([title, nojinja, show, rest])
+        commands.extend([title, nojinja, show, timer, rest])
 
-        magic_line_parser = pp.ZeroOrMore(pp.Group(pp.MatchFirst(commands)), stopOn=pp.LineEnd())
+        magic_line_parser = pp.ZeroOrMore(
+            pp.Group(pp.MatchFirst(commands)), stopOn=pp.LineEnd()
+        )
 
         cell_parser = pp.OneOrMore(
             pp.SkipTo(
-                (pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser)) | pp.StringEnd(),
+                (pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser))
+                | pp.StringEnd(),
                 include=True,
             )
         )
@@ -609,6 +663,7 @@ class Noteql(Magics):
         actions = {}
         arg_params = {}
         jinja = True
+        timer = False
         title = None
 
         for item in parsed_line:
@@ -621,7 +676,9 @@ class Noteql(Magics):
                 param_name = item[0]
                 variable = ns.get(param_name)
                 if not variable:
-                    print(f"Error in %%nql, variable {param_name} does not exist in your notebook")
+                    print(
+                        f"Error in %%nql, variable {param_name} does not exist in your notebook"
+                    )
                     return
                 if not isinstance(variable, Session):
                     print(f"Error in %%nql, variable {param_name} is not a seesion")
@@ -651,9 +708,14 @@ class Noteql(Magics):
             ]:
                 if item.getName() == command:
                     if command in actions:
-                        print(f"Error in %%nql, multiple {command.upper()} statements specified")
+                        print(
+                            f"Error in %%nql, multiple {command.upper()} statements specified"
+                        )
                         return
                     actions[command] = item[0]
+
+            if item.getName() == "timer":
+                timer = True
 
             if item.getName() == "show":
                 actions["show"] = True
@@ -715,7 +777,7 @@ class Noteql(Magics):
                 headings_name,
             ]
         ):
-            df = session.get_dataframe(sql, params=params)
+            df = session.get_dataframe(sql, params=params, timer=timer)
             if df_name:
                 ns[df_name] = df
 
@@ -750,12 +812,14 @@ class Noteql(Magics):
                 if title:
                     ws_title = title
                 else:
-                    ws_title = 'Sheet'
+                    ws_title = "Sheet"
 
                 if os.path.exists(excel_file):
                     wb = openpyxl.load_workbook(filename=excel_file)
                     if ws_title in wb.sheetnames:
-                        raise Exception(f"%%nql error, sheet name {ws_title} already exists. Use a new sheet name by adding `TITLE 'My Sheet Name'`.")
+                        raise Exception(
+                            f"%%nql error, sheet name {ws_title} already exists. Use a new sheet name by adding `TITLE 'My Sheet Name'`."
+                        )
                     ws = wb.create_sheet(ws_title)
                 else:
                     wb = openpyxl.Workbook()
