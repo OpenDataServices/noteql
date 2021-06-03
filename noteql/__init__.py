@@ -186,8 +186,15 @@ class Session:
         return self.get_dataframe(sql, params=[table])
 
     def set(self):
+        if self.datasette_url:
+            connection = self.datasette_url
+        else:
+            connection = self.dburi
+            if self.engine.url.password:
+                connection = connection.replace(self.engine.url.password, '***')
+
         print(
-            f'Using db connection {self.dburi or self.datasette_url} {"schema:" + self.schema if self.schema else ""}'
+            f'Using db connection {connection} {"schema:" + self.schema if self.schema else ""}'
         )
         self.last_set = datetime.datetime.utcnow()
 
