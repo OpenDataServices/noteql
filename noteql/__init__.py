@@ -120,6 +120,7 @@ class Session:
         datasette_url=None,
         cell_magic_output=False,
         timer=False,
+        connection_callback=None,
     ):
         self.schema = schema
         self.dburi = dburi
@@ -130,6 +131,8 @@ class Session:
         self.cell_magic_output = cell_magic_output
 
         self.timer = timer
+
+        self.connection_callback = connection_callback or (lambda connection: None)
 
         if datasette_url:
             self.database_type = "datasette"
@@ -202,6 +205,7 @@ class Session:
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
+            self.connection_callback(connection)
             if params:
                 sql_result = connection.execute(sql, params)
             else:
@@ -273,6 +277,7 @@ class Session:
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
+            self.connection_callback(connection)
             df = pandas.read_sql_query(
                 sql,
                 connection,
