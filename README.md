@@ -141,9 +141,9 @@ You can use [Jinja syntax](https://jinja.palletsprojects.com/en/3.0.x/templates/
 SELECT * FROM people WHERE age in
 (
   {% for age in ages %}
-    {% if not loop.first %}, {% endif%}
+    {% if not loop.first %}, {% endif %}
     {{age}}
-  {% endfor}
+  {% endfor %}
 )
 ```
 This generates an `in` clause using the `ages` list.
