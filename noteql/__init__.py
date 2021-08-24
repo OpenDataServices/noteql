@@ -198,7 +198,7 @@ class Session:
         )
         self.last_set = datetime.datetime.utcnow()
 
-    def get_results(self, sql, limit=-1, params=None):
+    def get_results(self, sql, limit=-1, params=None, dataframe=False):
         with self.engine.begin() as connection:
             if self.schema:
                 connection.execute("set local search_path = {};".format(self.schema))
@@ -206,14 +206,18 @@ class Session:
                 sql_result = connection.execute(sql, params)
             else:
                 sql_result = connection.execute(sql)
+            headers = sql_result.keys()
             if sql_result.returns_rows:
-                results = {
-                    "data": [row for row in generate_rows(sql_result, limit)],
-                    "headers": sql_result.keys(),
-                }
-                return results
+                if dataframe:
+                    return pandas.DataFrame.from_records(sql_result, columns=headers)
+                else:
+                    results = {
+                        "data": [row for row in generate_rows(sql_result, limit)],
+                        "headers": headers,
+                    }
+                    return results
             else:
-                return "Success"
+                return None
 
     def run_sql(self, sql, limit=20, params=None):
         results = self.get_results(sql, limit, params=params)
@@ -248,10 +252,7 @@ class Session:
         self,
         sql,
         index_col=None,
-        coerce_float=True,
         params=None,
-        parse_dates=None,
-        chunksize=None,
         timer=False,
     ):
         start = time.perf_counter()
@@ -270,22 +271,12 @@ class Session:
                     end = time.perf_counter()
                     print(f"Query took {end - start:0.4f} seconds")
 
-        with self.engine.begin() as connection:
-            if self.schema:
-                connection.execute("set local search_path = {};".format(self.schema))
-            df = pandas.read_sql_query(
-                sql,
-                connection,
-                index_col=None,
-                coerce_float=True,
-                params=params,
-                parse_dates=parse_dates,
-                chunksize=chunksize,
-            )
-            if self.timer or timer:
-                end = time.perf_counter()
-                print(f"Query took {start - end:0.4f} seconds")
-            return df
+        df = self.get_results(sql, params=params, dataframe=True)
+
+        if self.timer or timer:
+            end = time.perf_counter()
+            print(f"Query took {start - end:0.4f} seconds")
+        return df
 
     def show_dataframe(self, sql, title=None, title_size="h3", **kwargs):
         if title:
@@ -293,7 +284,7 @@ class Session:
 
         df = self.get_dataframe(sql, **kwargs)
 
-        if self.df_viewer:
+        if self.df_viewer and df:
             df = self.df_viewer(df, **self.df_viewer_kw)
         display(df)
 
@@ -785,6 +776,9 @@ class Noteql(Magics):
             ]
         ):
             df = session.get_dataframe(sql, params=params, timer=timer)
+            if df is None:
+                return
+
             if df_name:
                 ns[df_name] = df
 
