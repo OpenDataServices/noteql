@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7] - 2021-05-25
+
+- Way to define your own magic function.
+
+## [0.6] - 2021-07-24
+
+### Fixed
+
+- Error when running statements not returning results
+
 ## [0.5.1] - 2021-05-22
 
 ### Added

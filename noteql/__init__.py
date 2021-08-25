@@ -90,9 +90,9 @@ def create_local_db():
         LOCAL_DB_MADE = True
 
 
-def local_db_session():
+def local_db_session(**kw):
     create_local_db()
-    return Session("postgresql+psycopg2://root@/postgres", "public")
+    return Session("postgresql+psycopg2://root@/postgres", "public", **kw)
 
 
 def safe(value):
@@ -120,6 +120,7 @@ class Session:
         datasette_url=None,
         cell_magic_output=False,
         timer=False,
+        magic_name=None,
     ):
         self.schema = schema
         self.dburi = dburi
@@ -165,7 +166,14 @@ class Session:
                 )
 
         self.ipython = get_ipython()
-        self.ipython.register_magics(Noteql)
+
+        if magic_name not in self.ipython.magics_manager.registry:
+            if magic_name:
+                Noteql.magics["line"][magic_name] = Noteql.magics["line"].pop("nql")
+                Noteql.magics["cell"][magic_name] = Noteql.magics["cell"].pop("nql")
+            self.ipython.register_magics(Noteql)
+
+        self.magic_name = magic_name or "nql"
         self.set()
 
     def tables(self):
@@ -560,7 +568,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 @magics_class
 class Noteql(Magics):
-    def get_parsers(self):
+    def get_parsers(self, noteql_session):
         arg_params = (
             pp.Word(pp.alphanums + "_")
             + pp.Suppress("=")
@@ -629,7 +637,7 @@ class Noteql(Magics):
 
         cell_parser = pp.OneOrMore(
             pp.SkipTo(
-                (pp.LineStart() + pp.Group(pp.Keyword("%%nql") + magic_line_parser))
+                (pp.LineStart() + pp.Group(pp.Keyword(f"%%{noteql_session.magic_name}") + magic_line_parser))
                 | pp.StringEnd(),
                 include=True,
             )
@@ -854,7 +862,7 @@ class Noteql(Magics):
         session = self.find_session()
         if cell:
             dfs = []
-            magic_line_parser, cell_parser = self.get_parsers()
+            magic_line_parser, cell_parser = self.get_parsers(session)
 
             parsed_line = magic_line_parser.parseString(line)
             parsed_cell = cell_parser.parseString(cell)
