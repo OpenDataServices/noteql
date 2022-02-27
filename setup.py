@@ -5,7 +5,7 @@ from distutils.core import setup
 
 setup(
     name="noteql",
-    version="0.7.0",
+    version="0.7.1",
     description="Write sql in a notbook",
     author="David Raznick",
     author_email="david.raznick@opendataservices.coop",
@@ -15,7 +15,7 @@ setup(
         "ijson",
         "xmltodict",
         "sqlalchemy",
-        "psycopg2",
+        "psycopg2-binary",
         "ijson",
         "click",
         "jupyter",
