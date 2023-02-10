@@ -5,7 +5,7 @@ from distutils.core import setup
 
 setup(
     name="noteql",
-    version="0.7.1",
+    version="0.7.2",
     description="Write sql in a notbook",
     author="David Raznick",
     author_email="david.raznick@opendataservices.coop",
