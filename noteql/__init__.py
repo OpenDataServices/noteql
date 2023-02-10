@@ -21,7 +21,7 @@ from IPython.display import display, HTML
 from IPython import get_ipython
 from noteql.schema_queries import queries
 from urllib.parse import urlencode
-from jinja2.utils import Markup
+from jinja2.utils import markupsafe
 
 
 LOCAL_DB_MADE = False
@@ -96,16 +96,16 @@ def local_db_session(**kw):
 
 
 def safe(value):
-    return Markup(value)
+    return markupsafe.Markup(value)
 
 
 def identity(value):
-    return Markup(f""" "{value.replace('"', '""')}" """)
+    return markupsafe.Markup(f""" "{value.replace('"', '""')}" """)
 
 
 def fields(values):
     fields = ",".join(f""" "{value.replace('"', '""')}" """ for value in values)
-    return Markup(f"{fields}")
+    return markupsafe.Markup(f"{fields}")
 
 
 class Session:
