@@ -21,16 +21,20 @@ from IPython.display import display, HTML
 from IPython import get_ipython
 from noteql.schema_queries import queries
 from urllib.parse import urlencode
-from jinja2.utils import markupsafe
+try:
+    from jinja2.utils import markupsafe
+    Markup = markupsafe.Markup
+except:
+    from jinja2.utils import Markup
 
 
 LOCAL_DB_MADE = False
 
 
-def get_engine(dburi):
+def get_engine(dburi, connect_args=None):
     if not dburi:
         dburi = os.environ.get("NOTEQL_DBURI")
-    return sqlalchemy.create_engine(dburi)
+    return sqlalchemy.create_engine(dburi, connect_args=connect_args or {})
 
 
 def generate_rows(result, limit):
@@ -96,16 +100,16 @@ def local_db_session(**kw):
 
 
 def safe(value):
-    return markupsafe.Markup(value)
+    return Markup(value)
 
 
 def identity(value):
-    return markupsafe.Markup(f""" "{value.replace('"', '""')}" """)
+    return Markup(f""" "{value.replace('"', '""')}" """)
 
 
 def fields(values):
     fields = ",".join(f""" "{value.replace('"', '""')}" """ for value in values)
-    return markupsafe.Markup(f"{fields}")
+    return Markup(f"{fields}")
 
 
 class Session:
@@ -121,6 +125,7 @@ class Session:
         cell_magic_output=False,
         timer=False,
         magic_name=None,
+        connect_args=None
     ):
         self.schema = schema
         self.dburi = dburi
@@ -135,14 +140,14 @@ class Session:
         if datasette_url:
             self.database_type = "datasette"
         else:
-            self.engine = get_engine(dburi)
+            self.engine = get_engine(dburi, connect_args)
             # test connection
             with self.engine.begin() as connection:
                 pass
             self.database_type = self.engine.dialect.name
 
         param_style = "format"
-        if self.database_type == "sqlite":
+        if self.database_type in ("sqlite", "duckdb"):
             param_style = "qmark"
         if self.database_type == "datasette":
             param_style = "named"
@@ -167,7 +172,7 @@ class Session:
 
         self.ipython = get_ipython()
 
-        if magic_name not in self.ipython.magics_manager.registry:
+        if self.ipython and magic_name not in self.ipython.magics_manager.registry:
             if magic_name:
                 Noteql.magics["line"][magic_name] = Noteql.magics["line"].pop("nql")
                 Noteql.magics["cell"][magic_name] = Noteql.magics["cell"].pop("nql")
