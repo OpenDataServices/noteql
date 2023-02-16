@@ -4,8 +4,6 @@
 #
 #    pip-compile
 #
--e file:///home/david/projects/noteql
-    # via -r requirements.in
 anyio==3.6.2
     # via jupyter-server
 argon2-cffi==21.3.0
