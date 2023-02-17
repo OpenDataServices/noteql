@@ -34,7 +34,7 @@ LOCAL_DB_MADE = False
 def get_engine(dburi, connect_args=None):
     if not dburi:
         dburi = os.environ.get("NOTEQL_DBURI")
-    return sqlalchemy.create_engine(dburi, connect_args=connect_args or {})
+    return sqlalchemy.create_engine(str(dburi), connect_args=connect_args or {})
 
 
 def generate_rows(result, limit):
@@ -203,7 +203,7 @@ class Session:
             connection = self.datasette_url
         else:
             connection = self.dburi
-            if self.engine.url.password:
+            if self.engine.url.password and connection:
                 connection = connection.replace(self.engine.url.password, '***')
 
         print(
@@ -244,21 +244,39 @@ class Session:
         return self.create_relation(view, sql, "VIEW", params)
 
     def create_relation(self, relation, sql, type, params=None):
-        self.run_sql(
-            """
-            DROP {type} IF EXISTS {relation};
-        """.format(
-                relation=relation, type=type
+        if not (self.database_type == 'duckdb' and relation.startswith("'")):
+            self.run_sql(
+                """
+                DROP {type} IF EXISTS {relation};
+            """.format(
+                    relation=relation, type=type
+                )
             )
-        )
 
-        sql = """
-            CREATE {type} {relation}
-            AS
-            {sql}
-        """.format(
-            relation=relation, sql=sql, type=type
-        )
+            sql = """
+                CREATE {type} {relation}
+                AS
+                {sql}
+            """.format(
+                relation=relation, sql=sql, type=type
+            )
+        else:
+            if relation.endswith(".csv'"):
+                sql = """
+                    COPY (
+                      {sql}
+                    ) TO {relation} with (HEADER 1)
+                """.format(
+                    relation=relation, sql=sql
+                )
+            else:
+                sql = """
+                    COPY (
+                      {sql}
+                    ) TO {relation}
+                """.format(
+                    relation=relation, sql=sql
+                )
         return self.run_sql(sql, params=params)
 
     def get_dataframe(
@@ -583,7 +601,9 @@ class Noteql(Magics):
         create = pp.Keyword("create", caseless=True).suppress() + (
             pp.Word(pp.alphanums + "_")
             | pp.QuotedString('"', escQuote='"', unquoteResults=False)
+            | pp.QuotedString("'", escQuote="'", unquoteResults=False)
         )("create")
+
         view = pp.Keyword("view", caseless=True).suppress() + (
             pp.Word(pp.alphanums + "_")
             | pp.QuotedString('"', escQuote='"', unquoteResults=False)
@@ -670,6 +690,8 @@ class Noteql(Magics):
         ns = self.shell.user_ns
 
         session = self.find_session()
+        if not session:
+            return
 
         actions = {}
         arg_params = {}
@@ -857,7 +879,10 @@ class Noteql(Magics):
         view_name = actions.get("view")
 
         if view_name:
-            session.create_view(view_name, sql, params)
+            if create_name:
+                session.create_view(view_name, f"select * from {create_name}")
+            else:
+                session.create_view(view_name, sql, params)
 
         return df
 
@@ -865,6 +890,9 @@ class Noteql(Magics):
     def nql(self, line, cell=None):
 
         session = self.find_session()
+        if not session:
+            return
+
         if cell:
             dfs = []
             magic_line_parser, cell_parser = self.get_parsers(session)

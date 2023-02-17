@@ -296,10 +296,10 @@ session2 = noteql.Session('postgresql://user:password@localhost/dbname')
 %nql SELECT 1;
 ```
 
-To swap between sessions you can `use` on the session you want:
+To swap between sessions you can `set` on the session you want:
 
 ```python
-session.use()
+session.set()
 ```
 or use the `SESSION` command:
 
