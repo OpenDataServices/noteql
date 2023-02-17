@@ -24,7 +24,7 @@ from urllib.parse import urlencode
 try:
     from jinja2.utils import markupsafe
     Markup = markupsafe.Markup
-except:
+except Exception:
     from jinja2.utils import Markup
 
 
