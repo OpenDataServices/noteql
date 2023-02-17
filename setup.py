@@ -14,7 +14,6 @@ setup(
     install_requires=[
         "ijson",
         "xmltodict",
-        "sqlalchemy",
         "psycopg2-binary",
         "sqlalchemy<2",
         "ijson",
