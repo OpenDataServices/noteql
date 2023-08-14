@@ -34,7 +34,7 @@ cffi==1.15.1
 charset-normalizer==3.0.1
     # via requests
 click==8.1.3
-    # via noteql
+    # via sanitized-package
 comm==0.1.2
     # via ipykernel
 debugpy==1.6.6
@@ -59,7 +59,7 @@ idna==3.4
     #   jsonschema
     #   requests
 ijson==3.2.0.post0
-    # via noteql
+    # via sanitized-package
 ipykernel==6.21.1
     # via
     #   ipywidgets
@@ -90,8 +90,8 @@ jinja2==3.1.2
     #   nbclassic
     #   nbconvert
     #   notebook
-    #   noteql
     #   noteql-jinjasql
+    #   sanitized-package
 jsonpointer==2.3
     # via jsonschema
 jsonschema[format-nongpl]==4.17.3
@@ -99,7 +99,7 @@ jsonschema[format-nongpl]==4.17.3
     #   jupyter-events
     #   nbformat
 jupyter==1.0.0
-    # via noteql
+    # via sanitized-package
 jupyter-client==8.0.2
     # via
     #   ipykernel
@@ -136,7 +136,7 @@ jupyterlab-pygments==0.2.2
 jupyterlab-widgets==3.0.5
     # via ipywidgets
 lxml==4.9.2
-    # via noteql
+    # via sanitized-package
 markupsafe==2.1.2
     # via
     #   jinja2
@@ -174,11 +174,11 @@ notebook==6.5.2
 notebook-shim==0.2.2
     # via nbclassic
 noteql-jinjasql==0.1.10
-    # via noteql
+    # via sanitized-package
 numpy==1.24.2
     # via pandas
 openpyxl==3.1.0
-    # via noteql
+    # via sanitized-package
 packaging==23.0
     # via
     #   ipykernel
@@ -186,7 +186,7 @@ packaging==23.0
     #   nbconvert
     #   qtpy
 pandas==1.5.3
-    # via noteql
+    # via sanitized-package
 pandocfilters==1.5.0
     # via nbconvert
 parso==0.8.3
@@ -209,7 +209,7 @@ prompt-toolkit==3.0.36
 psutil==5.9.4
     # via ipykernel
 psycopg2-binary==2.9.5
-    # via noteql
+    # via sanitized-package
 ptyprocess==0.7.0
     # via
     #   pexpect
@@ -225,7 +225,7 @@ pygments==2.14.0
     #   nbconvert
     #   qtconsole
 pyparsing==3.0.9
-    # via noteql
+    # via sanitized-package
 pyrsistent==0.19.3
     # via jsonschema
 python-dateutil==2.8.2
@@ -253,7 +253,7 @@ qtconsole==5.4.0
 qtpy==2.3.0
     # via qtconsole
 requests==2.28.2
-    # via noteql
+    # via sanitized-package
 rfc3339-validator==0.1.4
     # via
     #   jsonschema
@@ -278,7 +278,7 @@ sniffio==1.3.0
 soupsieve==2.3.2.post1
     # via beautifulsoup4
 sqlalchemy==1.4.46
-    # via noteql
+    # via sanitized-package
 stack-data==0.6.2
     # via ipython
 terminado==0.17.1
@@ -289,7 +289,7 @@ terminado==0.17.1
     #   notebook
 tinycss2==1.2.1
     # via nbconvert
-tornado==6.2
+tornado==6.3.3
     # via
     #   ipykernel
     #   jupyter-client
@@ -332,4 +332,4 @@ websocket-client==1.5.1
 widgetsnbextension==4.0.5
     # via ipywidgets
 xmltodict==0.13.0
-    # via noteql
+    # via sanitized-package
